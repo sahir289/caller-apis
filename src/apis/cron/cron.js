@@ -7,9 +7,7 @@ dotenv.config();
 
 let isCronScheduled = false; 
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+
 
 async function generateAndLogDailyReport(date) {
   const reports = await getDailyAgentReportDao();
