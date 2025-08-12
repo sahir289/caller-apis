@@ -134,10 +134,10 @@ export const getUserByUserIDDao = async (userId) => {
 
 export const updateUserAgentDao = async (userDbId, agentId) => {
   try {
-    const sql = "UPDATE users SET agent_id = $1 WHERE id = $2";
-    const params = [agentId, userDbId];
-    await executeQuery(sql, params);
-    return true;
+    const sql = "UPDATE users SET agent_id = $1 WHERE user_id = $2";
+      const params = [agentId, userDbId];
+    const result = await executeQuery(sql, params);
+    return result.rows;
   } catch (error) {
     console.error("Error updating user's agent_id:", error);
     throw error;
