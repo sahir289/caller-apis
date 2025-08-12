@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import apiRouter from "./src/apis/index.js"; 
-
+import { startUserFetchCron } from "./src/apis/cron/cron.js";
 const app = express();
 // app.use(cors());
 
@@ -18,8 +18,7 @@ app.use(cors(corsOptions));
 app.use(express.json());
 
 app.use("/v1", apiRouter);
-
-
+startUserFetchCron();
 app.listen(PORT, () => {
   console.log(`Server running on port ${3009}`);
 });
