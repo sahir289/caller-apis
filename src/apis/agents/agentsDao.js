@@ -14,13 +14,15 @@ export const createAgentDao = async (data) => {
 
 
 
-export const getAgentDao = async (data) => {
+export const getAgentDao = async (agentName) => {
   try {
-    const [sql, params] = buildSelectQuery("agents", data);
+    const sql = "SELECT * FROM agents WHERE name = $1 LIMIT 1";
+    const params = [agentName];
     const result = await executeQuery(sql, params);
-    return result.rows[0];
+    return result.rows.length > 0 ? result.rows[0] : null;
   } catch (error) {
-    console.error("Error creating users:", error);
+    console.error("Error in getAgentDao:", error);
     throw error;
   }
 };
+  

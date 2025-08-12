@@ -25,7 +25,7 @@ export const buildInsertQuery = (table, data) => {
 export const buildSelectQuery = (table, conditions = {}) => {
   const keys = Object.keys(conditions);
   let sql = `SELECT * FROM ${table}`;
-  let values = [];
+  let values =   [];
 
   if (keys.length > 0) {
     const whereClause = keys
@@ -34,6 +34,5 @@ export const buildSelectQuery = (table, conditions = {}) => {
     sql += ` WHERE ${whereClause}`;
     values = keys.map((key) => conditions[key]);
   }
-
   return [sql, values];
 };

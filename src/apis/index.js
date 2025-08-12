@@ -1,17 +1,19 @@
-
 // src/apis/index.js
+
 import express from "express";
-import usersRouter from "./users/index.js";
+import historyRouter from "./history/index.js";
 import companyRouter from "./companies/index.js";
 import agentRouter from "./agents/index.js";
+import cronRouter from "./cron/index.js";
+import userRouter from "./users/index.js";
 
 const router = express.Router();
 
 // Mount the users router on /users
-router.use("/users", usersRouter);
+router.use("/history", historyRouter);
 router.use("/companies", companyRouter);
-router.use("/agentsrouter", agentRouter);
-
-
+router.use("/agents", agentRouter);
+router.use("/cron", cronRouter);
+router.use("/users", userRouter);
 
 export default router;
