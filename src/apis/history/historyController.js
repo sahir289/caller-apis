@@ -4,6 +4,29 @@ import XLSX from "xlsx";
 import { createhistoryService } from "./historyService.js";
 import { convertToDateOnly } from "../../utils/dateConverter.js";
 
+
+function getValidUserId(rawString, company_name) {
+  let requiredBlockedUser = null;
+  if (company_name === "Anna247") requiredBlockedUser = "admin";
+  else if (company_name === "Anna777") requiredBlockedUser = "aganna777";
+  const parts = rawString
+    .split(/→|←|<-|->|\/|\\/) 
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (
+    requiredBlockedUser &&
+    !parts.some((p) => p.toLowerCase() === requiredBlockedUser.toLowerCase())
+  ) {
+    throw new Error("Not a valid file"); 
+  }
+  return (
+    parts.find(
+      (p) => p.toLowerCase() !== (requiredBlockedUser?.toLowerCase() || "")
+    ) || null
+  );
+}
+
+
 export const createhistory = async (req, res) => {
   try {
     const { company_name } = req.body;
@@ -30,23 +53,26 @@ export const createhistory = async (req, res) => {
         const remark = String(transaction?.Remark || "");
 
         if (transaction["Date & Time"]) {
-          const fromTo =
-            String(transaction["From → To"] || "").split(" → ") || [];
-          if (!fromTo.length) return null;
+          const fromToStr = String(transaction["From → To"] || "");
+          if (!fromToStr || fromToStr.trim() === "") return null;
+          const fromToUser = getValidUserId(fromToStr , company_name);
+          if (!fromToUser) return null;
 
           isDeposit = desc.includes("Deposit ID");
-          userId = isDeposit ? fromTo[1] : fromTo[0];
+          userId = fromToUser;
           date = transaction["Date & Time"];
           credit = parseFloat(transaction.Credit) || 0;
           debit = parseFloat(transaction.Debit) || 0;
         }
         // Pattern 2
         else if (transaction.Date) {
-          const fromTo = String(transaction.Fromto || "").split("/") || [];
-          if (!fromTo.length) return null;
+          const fromToStr = String(transaction.Fromto || "");
+          if (!fromToStr || fromToStr.trim() === "") return null;
+          const fromToUser = getValidUserId(fromToStr ,company_name);
+          if (!fromToUser) return null;
 
           isDeposit = remark.includes("rry") || remark.includes("Bonus");
-          userId = fromTo[1];
+          userId = fromToUser;
           date = transaction.Date;
           credit = parseFloat(transaction.Credit) || 0;
           debit = Math.abs(parseFloat(transaction.Debit)) || 0;
