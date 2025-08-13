@@ -126,7 +126,7 @@ export function startUserFetchCron() {
   }
 
   cron.schedule(
-    "0 35 6 * * *",
+    "0 0 6 * * *",
     () => {
       const date = new Date().toLocaleDateString("en-GB");
       console.log("Cron started at", date);
