@@ -37,7 +37,7 @@ export const getDailyAgentReportDao = async () => {
       LEFT JOIN (
         SELECT DISTINCT user_id
         FROM history
-        WHERE created_at >= CURRENT_DATE - INTERVAL '1 days'
+        WHERE last_played_date::date >= CURRENT_DATE - INTERVAL '7 days'
       ) h ON h.user_id = u.user_id
       GROUP BY a.name
       ORDER BY a.name;

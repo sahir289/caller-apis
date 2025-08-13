@@ -26,12 +26,15 @@ export const createhistory = async (req, res) => {
     const newhistory = jsonData
       .map((transaction) => {
         let userId, date, credit, debit, isDeposit;
+        const desc = String(transaction?.Description || "");
+        const remark = String(transaction?.Remark || "");
 
         if (transaction["Date & Time"]) {
-          const fromTo = transaction["From → To"]?.split(" → ") || [];
+          const fromTo =
+            String(transaction["From → To"] || "").split(" → ") || [];
           if (!fromTo.length) return null;
 
-          isDeposit = transaction.Description?.includes("Deposit ID");
+          isDeposit = desc.includes("Deposit ID");
           userId = isDeposit ? fromTo[1] : fromTo[0];
           date = transaction["Date & Time"];
           credit = parseFloat(transaction.Credit) || 0;
@@ -39,12 +42,10 @@ export const createhistory = async (req, res) => {
         }
         // Pattern 2
         else if (transaction.Date) {
-          const fromTo = transaction.Fromto?.split("/") || [];
+          const fromTo = String(transaction.Fromto || "").split("/") || [];
           if (!fromTo.length) return null;
 
-          isDeposit =
-            transaction.Remark?.includes("rry") ||
-            transaction.Remark?.includes("Bonus");
+          isDeposit = remark.includes("rry") || remark.includes("Bonus");
           userId = fromTo[1];
           date = transaction.Date;
           credit = parseFloat(transaction.Credit) || 0;
@@ -80,13 +81,10 @@ export const createhistory = async (req, res) => {
           total_deposit_amount: isDeposit && debit > 0 ? debit : 0,
           total_winning_amount:
             !isDeposit && credit > 0
-              ? (transaction.Description?.includes("From PNL") &&
-                  parseFloat(
-                    transaction.Description.match(
-                      /From PNL: (\d+\.?\d*)/
-                    )?.[1] || 0
-                  ) > 0) ||
-                transaction.Remark?.includes("wdv")
+              ? (desc.includes("From PNL") &&
+                  parseFloat(desc.match(/From PNL: (\d+\.?\d*)/)?.[1] || 0) >
+                    0) ||
+                remark.includes("wdv")
                 ? credit
                 : 0
               : 0,
@@ -101,7 +99,7 @@ export const createhistory = async (req, res) => {
         };
       })
       .filter((user) => user !== null);
-   const creatuser = await createhistoryService(newhistory);
+    const creatuser = await createhistoryService(newhistory);
     return res.status(201).json({
       message: "history created successfully",
       data: creatuser,
