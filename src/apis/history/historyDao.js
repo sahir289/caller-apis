@@ -51,7 +51,41 @@ export const getDailyAgentReportDao = async () => {
   }
 };
 
-  
+export const getUnassignedUsersReportDao = async () => {
+  try {
+    const sql = `
+      SELECT
+        'Unassigned' AS agent_name,
+        COALESCE(ARRAY_AGG(DISTINCT CASE 
+          WHEN h.user_id IS NOT NULL THEN u.user_id 
+          END), '{}') AS active_client_ids,
+        COALESCE(ARRAY_AGG(DISTINCT CASE 
+          WHEN h.user_id IS NULL THEN u.user_id 
+          END), '{}') AS inactive_client_ids,
+        COUNT(DISTINCT CASE 
+          WHEN h.user_id IS NOT NULL THEN u.user_id 
+          END) AS active_clients_count,
+        COUNT(DISTINCT CASE 
+          WHEN h.user_id IS NULL THEN u.user_id 
+          END) AS inactive_clients_count
+      FROM users u
+      LEFT JOIN (
+        SELECT DISTINCT user_id
+        FROM history
+        WHERE last_played_date::date >= CURRENT_DATE - INTERVAL '7 days'
+      ) h ON h.user_id = u.user_id
+      WHERE u.agent_id IS NULL
+      GROUP BY agent_name
+      ORDER BY agent_name;
+    `;
+    const result = await executeQuery(sql);
+    return result.rows;
+  } catch (error) {
+    console.error("Error getting unassigned users report:", error);
+    throw error;
+  }
+};
+
 
 
 export const gethistoryDao = async (data) => {
