@@ -16,8 +16,8 @@ export const createAgentService = async (payload) => {
 export const pairAgentService = async (payload) => {
   try {
     for (const item of payload) {
-        let userId = item.UserID;
-      let agentName = item.AGENT ? item.AGENT : null;
+      let userId = item.UserID;
+      let agentName = item.AGENT ? String(item.AGENT).toLowerCase().trim() : null;
       let agent;
       if (!agentName) {
         agent = await getAgentDao("self");
@@ -31,13 +31,13 @@ export const pairAgentService = async (payload) => {
         }
       }
       const agentId = agent.id;
-        const user = await getUserByUserIDDao(userId);
+      const user = await getUserByUserIDDao(userId);
       if (user) {
-           await updateUserAgentDao(user.user_id, agentId);
-          console.log(`Paired user ${user.user_id} with agent ${agent.name}`);
+      await updateUserAgentDao(user.user_id, agentId);
+      console.log(`Paired user ${user.user_id} with agent ${agent.name}`);
       }
     }
-      console.log("Agents paired and users updated successfully");
+    console.log("Agents paired and users updated successfully");
     return { message: "Agents paired and users updated successfully" };
   } catch (error) {
     console.error("Error in service agent", error);
