@@ -119,7 +119,7 @@ export const getUsersByIDDao = async (user_id) => {
 export const getUserByUserIDDao = async (userId) => {
   try {
     const sql =
-      "SELECT user_id FROM users WHERE user_id = $1 AND agent_id IS NULL LIMIT 1";
+      "SELECT user_id FROM users WHERE user_id = $1 LIMIT 1";
     const params = [userId];
     const result = await executeQuery(sql, params);
     return result.rows.length > 0 ? result.rows[0] : null;

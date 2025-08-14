@@ -33,10 +33,8 @@ export const pairAgentService = async (payload) => {
       const agentId = agent.id;
         const user = await getUserByUserIDDao(userId);
       if (user) {
-        if (!user.agent_id) {
-            await updateUserAgentDao(user.user_id, agentId);
+           await updateUserAgentDao(user.user_id, agentId);
           console.log(`Paired user ${user.user_id} with agent ${agent.name}`);
-        }
       }
     }
       console.log("Agents paired and users updated successfully");
