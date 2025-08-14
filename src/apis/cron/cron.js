@@ -1,10 +1,12 @@
 import cron from "node-cron";
 import dotenv from "dotenv";
+import fsPromises from "fs/promises";
 import {
   getDailyAgentReportDao,
   getUnassignedUsersReportDao,
 } from "../history/historyDao.js";
-import { sendTelegramMessage } from "../../utils/telegramSender.js";
+import { sendTelegramDocument } from "../../utils/telegramSender.js";
+import { generateCSV } from "../../utils/generatepdf.js";
 
 dotenv.config();
 
@@ -12,183 +14,89 @@ let isCronScheduled = false;
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function sendMessageWithRetry(message, maxRetries = 5) {
+async function sendDocumentWithRetry(filePath, maxRetries = 5) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      await sendTelegramMessage(message);
-      console.log(`Successfully sent message: ${message.slice(0, 50)}...`);
-      return true;
-    } catch (error) {
-      if (error.response && error.response.status === 429) {
-        const retryAfter = error.response.data.parameters.retry_after || 5;
-        console.warn(
-          `Rate limit hit for message: ${message.slice(
-            0,
-            50
-          )}..., retrying after ${retryAfter} seconds (Attempt ${attempt}/${maxRetries})`
-        );
-        await delay(retryAfter * 1000); 
-        if (attempt === maxRetries) {
-          console.error(
-            `Max retries reached for message: ${message.slice(0, 50)}...`
-          );
-          return false;
-        }
-      } else {
-        console.error(`Error sending message: ${error.message}`);
+      const success = await sendTelegramDocument(filePath);
+      if (success) {
+        console.log(`Successfully sent document: ${filePath}`);
+        return true;
+      }
+      console.warn(
+        `Failed to send document: ${filePath}, retrying (Attempt ${attempt}/${maxRetries})`
+      );
+      const retryAfter = attempt * 2; // Exponential backoff
+      await delay(retryAfter * 1000);
+      if (attempt === maxRetries) {
+        console.error(`Max retries reached for document: ${filePath}`);
         return false;
       }
+    } catch (error) {
+      console.error(`Error sending document ${filePath}: ${error.message}`);
+      return false;
     }
   }
-}
-
-function splitMessage(message, maxLength = 4000) {
-  const messages = [];
-  let currentMessage = "";
-  const lines = message.split("\n");
-
-  for (const line of lines) {
-    if (currentMessage.length + line.length + 1 > maxLength) {
-      messages.push(currentMessage.trim());
-      currentMessage = line + "\n";
-    } else {
-      currentMessage += line + "\n";
-    }
-  }
-  if (currentMessage.trim()) {
-    messages.push(currentMessage.trim());
-  }
-  return messages;
 }
 
 async function generateAndSendUnassignedReport(date) {
-  const reports = await getUnassignedUsersReportDao();
+    const reports = await getUnassignedUsersReportDao();
   console.log(`Processing ${reports.length} unassigned users`);
-
   if (!reports.length) {
     console.log("No unassigned users found");
     return;
   }
 
-  const headerSuccess = await sendMessageWithRetry(
-    `📌 Unassigned Users Report (${date}) 📌`
-  );
-  if (!headerSuccess) {
-    console.error("Failed to send unassigned report header");
-    return;
+  try {
+    const csvFilePath = await generateCSV(reports, "unassigned", date);
+    const csvSuccess = await sendDocumentWithRetry(csvFilePath);
+    if (!csvSuccess) {
+      console.error("Failed to send unassigned report CSV");
+    }
+    await fsPromises
+      .unlink(csvFilePath)
+      .catch((err) =>
+        console.error(`Failed to delete CSV ${csvFilePath}: ${err.message}`)
+      );
+  } catch (err) {
+    console.error(`Error generating unassigned report CSV: ${err.message}`);
   }
-
-  const messageDelay = 2000;
-
-  for (const r of reports) {
-    const hasActiveClients =
-      Array.isArray(r.active_client_ids) && r.active_client_ids.length > 0;
-    const hasInactiveClients =
-      Array.isArray(r.inactive_client_ids) && r.inactive_client_ids.length > 0;
-
-    const chunkIds = (ids) => {
-      const lines = [];
-      const maxPerLine = 50;
-      for (let i = 0; i < ids.length; i += maxPerLine) {
-        const chunk = ids.slice(i, i + maxPerLine).join(", ");
-        lines.push(chunk);
-      }
-      return lines.join("\n");
-    };
-
-    let activeSection = `🟢 Active clients: ${
-      hasActiveClients ? r.active_clients_count : "0"
-    }\n`;
-    if (hasActiveClients) {
-      activeSection += chunkIds(r.active_client_ids) + "\n";
-    }
-
-    let inactiveSection = `🔴 Inactive clients: ${
-      hasInactiveClients ? r.inactive_clients_count : "0"
-    }\n`;
-    if (hasInactiveClients) {
-      inactiveSection += chunkIds(r.inactive_client_ids) + "\n";
-    }
-
-    let message = `Agent name: ${r.agent_name}\n${activeSection}\n${inactiveSection}\n`;
-
-    const messages = splitMessage(message, 4000);
-    for (const msg of messages) {
-      const success = await sendMessageWithRetry(msg);
-      if (!success) {
-        console.error(`Failed to send message for unassigned users`);
-      }
-      await delay(messageDelay);
-    }
-  }
-  console.log("Finished sending unassigned users report");
 }
-  
+
+async function generateAndSendWeeklyReport(date) {
+  try {
+    const csvFilePath = "./7 days users (2).csv";
+    console.log(`Processing CSV file: ${csvFilePath}`);
+
+    const csvSuccess = await sendDocumentWithRetry(csvFilePath);
+    if (!csvSuccess) {
+      console.error("Failed to send weekly report CSV");
+    }
+    console.log("Finished sending weekly users report");
+  } catch (err) {
+    console.error(`Error processing weekly report: ${err.message}`);
+  }
+}
 
 async function generateAndLogDailyReport(date) {
-    const reports = await getDailyAgentReportDao();
-     console.log(`Processing ${reports.length} agents for daily report`);
-  const headerSuccess = await sendMessageWithRetry(
-    `📊 Daily Report (${date}) 📊`
-  );
-  if (!headerSuccess) {
-    console.error("Failed to send daily report header");
-    return;
-  }
-
-  const batchSize = 1; 
-  const messageDelay = 2000;
-
-  for (let i = 0; i < reports.length; i += batchSize) {
-    const batch = reports.slice(i, i + batchSize);
-    for (const r of batch) {
-      const hasActiveClients =
-        Array.isArray(r.active_client_ids) && r.active_client_ids.length > 0;
-      const hasInactiveClients =
-        Array.isArray(r.inactive_client_ids) &&
-        r.inactive_client_ids.length > 0;
-
-      const chunkIds = (ids) => {
-        const lines = [];
-        const maxPerLine = 50;
-        for (let j = 0; j < ids.length; j += maxPerLine) {
-          const chunk = ids.slice(j, j + maxPerLine).join(", ");
-          lines.push(chunk);
-        }
-        return lines.join("\n");
-      };
-
-      let activeSection = `🟢 Active clients: ${
-        hasActiveClients ? r.active_clients_count : "0"
-      }\n`;
-      if (hasActiveClients) {
-        activeSection += chunkIds(r.active_client_ids) + "\n";
-      }
-
-      let inactiveSection = `🔴 Inactive clients: ${
-        hasInactiveClients ? r.inactive_clients_count : "0"
-      }\n`;
-      if (hasInactiveClients) {
-        inactiveSection += chunkIds(r.inactive_client_ids) + "\n";
-      }
-
-      let message = `Agent name: ${r.agent_name}\n${activeSection}\n${inactiveSection}\n`;
-
-      const messages = splitMessage(message, 4000);
-      for (const msg of messages) {
-        const success = await sendMessageWithRetry(msg);
-        if (!success) {
-          console.error(`Failed to send message for agent: ${r.agent_name}`);
-        }
-        await delay(messageDelay);
-      }
+  const reports = await getDailyAgentReportDao();
+  console.log(`Processing ${reports.length} agents for daily report`);
+  try {
+    const csvFilePath = await generateCSV(reports, "daily", date);
+    const csvSuccess = await sendDocumentWithRetry(csvFilePath);
+    if (!csvSuccess) {
+      console.error("Failed to send daily report CSV");
     }
+    await fsPromises
+      .unlink(csvFilePath)
+      .catch((err) =>
+        console.error(`Failed to delete CSV ${csvFilePath}: ${err.message}`)
+      );
+  } catch (err) {
+    console.error(`Error generating daily report CSV: ${err.message}`);
   }
 
-  console.log(`Finished processing ${reports.length} agents`);
-
-  // Send unassigned users after agents report
   await generateAndSendUnassignedReport(date);
+  await generateAndSendWeeklyReport(date);
 }
 
 export function startUserFetchCron() {
@@ -203,10 +111,9 @@ export function startUserFetchCron() {
       const date = new Date().toLocaleDateString("en-GB");
       console.log("Cron started at", date);
       generateAndLogDailyReport(date);
-      },
+    },
     { timezone: "Asia/Dubai" }
   );
-
   isCronScheduled = true;
   console.log("Cron job scheduled");
 }
