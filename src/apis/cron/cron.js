@@ -142,16 +142,15 @@ export function startUserFetchCron() {
     },
     { timezone: "Asia/Dubai" }
   );
-  cron.schedule(
-    "0 * * * *",
-    () => {
-      const date = new Date().toLocaleString("en-GB");
-      console.log("Hourly Cron started at", date);
-      // getHourlyActiveClientsDao();
-      generateAndSendHourlyActiveClientsReport(date);
-    },
-    { timezone: "Asia/Dubai" }
-  );
+  // cron.schedule(
+  //   "0 * * * *",
+  //   () => {
+  //     const date = new Date().toLocaleString("en-GB");
+  //     console.log("Hourly Cron started at", date);
+  //     // generateAndSendHourlyActiveClientsReport(date);
+  //   },
+  //   { timezone: "Asia/Dubai" }
+  // );
 
   isCronScheduled = true;
   console.log("Cron jobs scheduled");
