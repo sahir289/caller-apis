@@ -7,6 +7,7 @@ import {
 } from "../history/historyDao.js";
 import { sendTelegramDocument } from "../../utils/telegramSender.js";
 import { generateCSV } from "../../utils/generatepdf.js";
+import { getHourlyActiveClientsDao } from "../history/historyDao.js";
 
 dotenv.config();
 
@@ -98,6 +99,33 @@ async function generateAndLogDailyReport(date) {
   await generateAndSendUnassignedReport(date);
   await generateAndSendWeeklyReport(date);
 }
+async function generateAndSendHourlyActiveClientsReport(date) {
+  const reports = await getHourlyActiveClientsDao();
+  console.log(`Processing ${reports.length} active clients for hourly report`);
+  if (!reports.length) {
+    console.log("No active clients found in this hour");
+    return;
+  }
+
+  try {
+    const csvFilePath = await generateCSV(
+      reports,
+      "hourly-active-clients",
+      date
+    );
+    const csvSuccess = await sendDocumentWithRetry(csvFilePath);
+    if (!csvSuccess) {
+      console.error("Failed to send hourly active clients report CSV");
+    }
+    await fsPromises
+      .unlink(csvFilePath)
+      .catch((err) =>
+        console.error(`Failed to delete CSV ${csvFilePath}: ${err.message}`)
+      );
+  } catch (err) {
+    console.error(`Error generating hourly active clients CSV: ${err.message}`);
+  }
+}
 
 export function startUserFetchCron() {
   if (isCronScheduled) {
@@ -109,11 +137,23 @@ export function startUserFetchCron() {
     "0 0 6 * * *",
     () => {
       const date = new Date().toLocaleDateString("en-GB");
-      console.log("Cron started at", date);
+      console.log("Daily Cron started at", date);
       generateAndLogDailyReport(date);
     },
     { timezone: "Asia/Dubai" }
   );
+  cron.schedule(
+    "0 * * * *",
+    () => {
+      const date = new Date().toLocaleString("en-GB");
+      console.log("Hourly Cron started at", date);
+      // getHourlyActiveClientsDao();
+      generateAndSendHourlyActiveClientsReport(date);
+    },
+    { timezone: "Asia/Dubai" }
+  );
+
   isCronScheduled = true;
-  console.log("Cron job scheduled");
+  console.log("Cron jobs scheduled");
 }
+

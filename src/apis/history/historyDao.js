@@ -51,6 +51,59 @@ export const getDailyAgentReportDao = async () => {
   }
 };
 
+export const getHourlyActiveClientsDao = async () => {
+  try {
+    const sql = `
+      SELECT
+        COALESCE(a.name, 'Unassigned') AS agent_name,
+        ARRAY_AGG(DISTINCT CASE 
+          WHEN h.created_at >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC+4') - INTERVAL '1 hour'
+           AND h.last_played_date = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC+4')::date
+           THEN u.user_id
+        END) FILTER (WHERE h.created_at IS NOT NULL) AS active_client_ids,
+        COUNT(DISTINCT CASE 
+          WHEN h.created_at >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC+4') - INTERVAL '1 hour'
+           AND h.last_played_date = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC+4')::date
+           THEN u.user_id
+        END) AS active_clients_count,
+        ARRAY_AGG(DISTINCT CASE 
+          WHEN h.created_at < (CURRENT_TIMESTAMP AT TIME ZONE 'UTC+4') - INTERVAL '1 hour' 
+           OR h.user_id IS NULL
+           THEN u.user_id
+        END) FILTER (WHERE u.user_id IS NOT NULL) AS inactive_client_ids,
+        COUNT(DISTINCT CASE 
+          WHEN h.created_at < (CURRENT_TIMESTAMP AT TIME ZONE 'UTC+4') - INTERVAL '1 hour' 
+           OR h.user_id IS NULL
+           THEN u.user_id
+        END) AS inactive_clients_count
+      FROM users u
+      LEFT JOIN agents a ON u.agent_id = a.id
+      LEFT JOIN history h ON h.user_id = u.user_id
+      GROUP BY a.name
+    `;
+
+    const result = await executeQuery(sql);
+
+    return result.rows.length
+      ? result.rows
+      : [
+          {
+            agent_name: "Unassigned",
+            active_client_ids: [],
+            active_clients_count: 0,
+            inactive_client_ids: [],
+            inactive_clients_count: 0,
+          },
+        ];
+  } catch (error) {
+    console.error(
+      "Error getting hourly active clients:",
+      error.message,
+    );
+    throw new Error(`Failed to fetch hourly active clients: ${error.message}`);
+  }
+};
+
 export const getUnassignedUsersReportDao = async () => {
   try {
     const sql = `
