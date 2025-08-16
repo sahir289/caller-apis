@@ -1,13 +1,10 @@
 import fsPromises from "fs/promises";
+import path from "path";
 import Papa from "papaparse";
-
 
 const MAX_IDS_PER_COLUMN = 500;
 
-function splitIdsByCount(
-  ids,
-  maxPerCol= MAX_IDS_PER_COLUMN
-) {
+function splitIdsByCount(ids, maxPerCol = MAX_IDS_PER_COLUMN) {
   const columns = [];
   for (let i = 0; i < ids.length; i += maxPerCol) {
     columns.push(ids.slice(i, i + maxPerCol).join(","));
@@ -16,7 +13,12 @@ function splitIdsByCount(
 }
 
 export async function generateCSV(reports, reportType, date) {
-  const filePath = `./${reportType}_report_${date.replace(/\//g, "-")}.csv`;
+  const uploadsFolder = path.join(process.cwd(), "uploads");
+  await fsPromises.mkdir(uploadsFolder, { recursive: true }); 
+  const filePath = path.join(
+    uploadsFolder,
+    `${reportType}_report_${date.replace(/\//g, "-")}.csv`
+  );
 
   const csvData = reports.map((r) => {
     const activeIds = Array.isArray(r.active_client_ids)
