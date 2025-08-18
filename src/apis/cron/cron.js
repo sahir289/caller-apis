@@ -6,9 +6,13 @@ import {
   getUnassignedUsersReportDao,
 } from "../history/historyDao.js";
 import { sendTelegramDocument } from "../../utils/telegramSender.js";
+import { sendTelegramMessage } from "../../utils/telegramSender.js";
 import { generateCSV } from "../../utils/generatepdf.js";
 import { getHourlyActiveClientsDao } from "../history/historyDao.js";
-
+import {
+  getAgentDailySummaryDao,
+  getDailyHistoryUserIdsDao,
+} from "../history/historyDao.js";
 dotenv.config();
 
 let isCronScheduled = false;
@@ -126,6 +130,97 @@ async function generateAndSendHourlyActiveClientsReport(date) {
     console.error(`Error generating hourly active clients CSV: ${err.message}`);
   }
 }
+async function sendHourlySummaryMessage() {
+  try {
+    const reports = await getAgentDailySummaryDao();
+    if (!reports.length) {
+      await sendTelegramMessage(
+        "Hourly Summary: No activity recorded for today.",
+        process.env.TELEGRAM_CHAT_HOURLY_AGENTS_CLIENTS
+      );
+      return;
+    }
+
+    // Current Indian time
+    const indianTime = new Date().toLocaleString("en-GB", {
+      timeZone: "Asia/Kolkata",
+    });
+
+    const BATCH_SIZE = 4;
+    let firstMessage = true;
+    let message = "";
+
+    for (let i = 0; i < reports.length; i++) {
+      const agent = reports[i];
+
+      const agentMsg =
+        `🧑‍💼 Agent Name  :   ${agent.agent_name}\n` +
+        `💰 Total Deposit  :  ₹${agent.total_deposit_amount}\n` +
+        `💸 Total Withdrawal  :  ₹${agent.total_withdrawal_amount}\n` +
+        `👥 Active Clients  :  ${agent.active_clients_count}\n\n`;
+
+      // Agar first message hai to header add karo
+      if (firstMessage && message === "") {
+        message += `📊 Hourly Agent Summary (${indianTime})\n\n`;
+      }
+
+      message += agentMsg;
+
+      // Har 4 agent ke baad send karo
+      if ((i + 1) % BATCH_SIZE === 0) {
+        await sendTelegramMessage(
+          message,
+          process.env.TELEGRAM_CHAT_HOURLY_AGENTS_CLIENTS
+
+        );
+        message = "";
+        firstMessage = false; // baad ke messages me header nahi aayega
+      }
+    }
+
+    // Agar last batch me 4 se kam agent rahe ho to bhejna
+    if (message.length > 0) {
+      await sendTelegramMessage(
+        message,
+        process.env.TELEGRAM_CHAT_HOURLY_AGENTS_CLIENTS
+      );
+    }
+    console.log("Hourly summary message sent successfully.");
+  } catch (error) {
+    console.error("Error sending hourly summary message:", error.message);
+  }
+}
+
+
+async function sendHourlySummaryFromData() {
+  try {
+    const row = await getDailyHistoryUserIdsDao();
+    if (!row) {
+      await sendTelegramMessage(
+        "Hourly Summary: No activity recorded for today.",
+        process.env.TELEGRAM_CHAT_HOURLY_TOTAL_SUMMARY
+      );
+      return;
+    }
+
+    const MAX_MESSAGE_LENGTH = 2000;
+
+
+    let message = `📊 Hourly Summary 📊\n\n`;
+    message += `⏰ Time : ${row.time}\n\n`;
+    message += `💰 Total Deposit : ₹${row.total_deposit_amount}\n\n`;
+    message += `💸 Total Withdrawal : ₹${row.total_withdrawal_amount}\n\n`;
+    message += `👥 Active Clients : ${row.user_count}\n\n`;
+    await sendTelegramMessage(
+      message,
+      process.env.TELEGRAM_CHAT_HOURLY_TOTAL_SUMMARY
+    );
+    console.log("Hourly summary message sent successfully.");
+  } catch (error) {
+    console.error("Error sending hourly summary message:", error.message);
+  }
+}
+
 
 export function startUserFetchCron() {
   if (isCronScheduled) {
@@ -142,16 +237,24 @@ export function startUserFetchCron() {
     },
     { timezone: "Asia/Dubai" }
   );
-  // cron.schedule(
-  //   "0 * * * *",
-  //   () => {
-  //     const date = new Date().toLocaleString("en-GB");
-  //     console.log("Hourly Cron started at", date);
-  //     // generateAndSendHourlyActiveClientsReport(date);
-  //   },
-  //   { timezone: "Asia/Dubai" }
-  // );
-
+  cron.schedule(
+    "0 * * * *",
+    () => {
+      const date = new Date().toLocaleString("en-GB");
+      sendHourlySummaryMessage();
+      console.log("Hourly Cron started Agents Clients at", date);
+    },
+    { timezone: "Asia/Dubai" }
+  );
+  cron.schedule(
+    "0 * * * *",
+    () => {
+      const date = new Date().toLocaleString("en-GB");
+      sendHourlySummaryFromData();
+      console.log("Hourly Cron started All Clients at", date);
+    },
+    { timezone: "Asia/Dubai" }
+  );
   isCronScheduled = true;
   console.log("Cron jobs scheduled");
 }

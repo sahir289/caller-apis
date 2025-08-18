@@ -1,19 +1,17 @@
 import dotenv from "dotenv";
 import axios from "axios";
 import FormData from "form-data";
-import fs from "fs"; // For createReadStream
+import fs from "fs"; 
 
 dotenv.config();
 
-export async function sendTelegramMessage(message) {
-  const chatId = process.env.TELEGRAM_CHAT_ID;
+export async function sendTelegramMessage(message ,chatId) {
   const TELEGRAM_URL = process.env.TELEGRAM_URL;
   const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
   if (!TELEGRAM_BOT_TOKEN || !chatId) {
     console.error("Missing Telegram credentials in .env");
     return;
   }
-
   try {
     const telegramUrl = `${TELEGRAM_URL}${TELEGRAM_BOT_TOKEN}/sendMessage`;
     await axios.post(telegramUrl, {
@@ -33,12 +31,10 @@ export async function sendTelegramDocument(filePath, maxRetries = 5) {
   const chatId = process.env.TELEGRAM_CHAT_ID;
   const TELEGRAM_URL = process.env.TELEGRAM_URL;
   const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-
   if (!TELEGRAM_BOT_TOKEN || !chatId) {
     console.error("Missing Telegram credentials in .env");
     return false;
   }
-
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const form = new FormData();

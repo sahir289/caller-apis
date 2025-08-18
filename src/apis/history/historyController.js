@@ -43,89 +43,104 @@ export const createhistory = async (req, res) => {
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
     const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: null });
-
     fs.unlinkSync(filePath);
 
     const newhistory = jsonData
       .map((transaction) => {
-        let userId, date, credit, debit, isDeposit;
+        let userId, date;
         const desc = String(transaction?.Description || "");
         const remark = String(transaction?.Remark || "");
 
         if (transaction["Date & Time"]) {
           const fromToStr = String(transaction["From → To"] || "");
           if (!fromToStr || fromToStr.trim() === "") return null;
-          const fromToUser = getValidUserId(fromToStr , company_name);
+          const fromToUser = getValidUserId(fromToStr, company_name);
           if (!fromToUser) return null;
 
-          isDeposit = desc.includes("Deposit ID");
           userId = fromToUser;
           date = transaction["Date & Time"];
-          credit = parseFloat(transaction.Credit) || 0;
-          debit = parseFloat(transaction.Debit) || 0;
-        }
-        // Pattern 2
-        else if (transaction.Date) {
+          // DEBIT/CREDIT LOGIC ONLY
+          const debit = parseFloat(transaction.Debit) || 0;
+          const credit = parseFloat(transaction.Credit) || 0;
+
+          return {
+            user_id: userId,
+            company_name: company_name || null,
+            registration_date: null,
+            first_deposit_date: debit > 0 ? convertToDateOnly(date) : null,
+            first_time_deposit_amount: debit > 0 ? debit : 0,
+            number_of_deposits: debit > 0 ? 1 : 0,
+            total_deposit_amount: debit > 0 ? debit : 0,
+            total_winning_amount: credit > 0 ? credit : 0,
+            total_withdrawal_amount: credit > 0 ? credit : 0,
+            last_deposit_date: debit > 0 ? convertToDateOnly(date) : null,
+            last_played_date: convertToDateOnly(date),
+            user_status: null,
+            available_points: 0,
+            is_obsolete: false,
+            config: Object.fromEntries(
+              Object.entries(transaction).filter(
+                ([key]) =>
+                  ![
+                    "From → To",
+                    "Fromto",
+                    "Date & Time",
+                    "Date",
+                    "Credit",
+                    "Debit",
+                  ].includes(key)
+              )
+            ),
+          };
+        } else if (transaction.Date) {
           const fromToStr = String(transaction.Fromto || "");
           if (!fromToStr || fromToStr.trim() === "") return null;
-          const fromToUser = getValidUserId(fromToStr ,company_name);
+          const fromToUser = getValidUserId(fromToStr, company_name);
           if (!fromToUser) return null;
 
-          isDeposit = remark.includes("rry") || remark.includes("Bonus");
           userId = fromToUser;
           date = transaction.Date;
-          credit = parseFloat(transaction.Credit) || 0;
-          debit = Math.abs(parseFloat(transaction.Debit)) || 0;
+          // DEBIT/CREDIT LOGIC ONLY
+          const debit = Math.abs(parseFloat(transaction.Debit)) || 0;
+          const credit = parseFloat(transaction.Credit) || 0;
+
+          return {
+            user_id: userId,
+            company_name: company_name || null,
+            registration_date: null,
+            first_deposit_date: debit > 0 ? convertToDateOnly(date) : null,
+            first_time_deposit_amount: debit > 0 ? debit : 0,
+            number_of_deposits: debit > 0 ? 1 : 0,
+            total_deposit_amount: debit > 0 ? debit : 0,
+            total_winning_amount: credit > 0 ? credit : 0,
+            total_withdrawal_amount: credit > 0 ? credit : 0,
+            last_deposit_date: debit > 0 ? convertToDateOnly(date) : null,
+            last_played_date: convertToDateOnly(date),
+            user_status: null,
+            available_points: 0,
+            is_obsolete: false,
+            config: Object.fromEntries(
+              Object.entries(transaction).filter(
+                ([key]) =>
+                  ![
+                    "From → To",
+                    "Fromto",
+                    "Date & Time",
+                    "Date",
+                    "Credit",
+                    "Debit",
+                  ].includes(key)
+              )
+            ),
+          };
         } else {
           return null;
         }
-
-        if (!userId) return null;
-
-        const config = {};
-        Object.keys(transaction).forEach((key) => {
-          if (
-            key !== "From → To" &&
-            key !== "Fromto" &&
-            key !== "Date & Time" &&
-            key !== "Date" &&
-            key !== "Credit" &&
-            key !== "Debit"
-          ) {
-            config[key] = transaction[key];
-          }
-        });
-
-        return {
-          user_id: userId,
-          company_name: company_name || null,
-          registration_date: null,
-          first_deposit_date:
-            isDeposit && debit > 0 ? convertToDateOnly(date) : null,
-          first_time_deposit_amount: isDeposit && debit > 0 ? debit : 0,
-          number_of_deposits: isDeposit && debit > 0 ? 1 : 0,
-          total_deposit_amount: isDeposit && debit > 0 ? debit : 0,
-          total_winning_amount:
-            !isDeposit && credit > 0
-              ? (desc.includes("From PNL") &&
-                  parseFloat(desc.match(/From PNL: (\d+\.?\d*)/)?.[1] || 0) >
-                    0) ||
-                remark.includes("wdv")
-                ? credit
-                : 0
-              : 0,
-          total_withdrawal_amount: !isDeposit && credit > 0 ? credit : 0,
-          last_deposit_date:
-            isDeposit && debit > 0 ? convertToDateOnly(date) : null,
-          last_played_date: convertToDateOnly(date),
-          user_status: null,
-          available_points: 0,
-          is_obsolete: false,
-          config,
-        };
       })
       .filter((user) => user !== null);
+    // newhistory.last_played_date = 
     const creatuser = await createhistoryService(newhistory);
+    console.log(`${company_name} History created successfully`);
     return res.status(201).json({
       message: "history created successfully",
       data: creatuser,

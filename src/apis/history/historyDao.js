@@ -50,6 +50,77 @@ export const getDailyAgentReportDao = async () => {
     throw error;
   }
 };
+export const getAgentDailySummaryDao = async () => {
+  try {
+    const date = new Date().toLocaleDateString("en-CA", {
+      timeZone: "Asia/Kolkata",
+    });
+    const indianDate = new Date(date).toISOString().split("T")[0];
+    const sql = `
+     SELECT
+  TRIM(a.name) AS agent_name,
+  COUNT(DISTINCT u.user_id) FILTER (WHERE h.user_id IS NOT NULL) AS active_clients_count,
+  COALESCE(SUM(h.total_deposit_amount::NUMERIC), 0) AS total_deposit_amount,
+  COALESCE(SUM(h.total_withdrawal_amount::NUMERIC), 0) AS total_withdrawal_amount
+FROM agents a
+LEFT JOIN users u ON u.agent_id = a.id
+LEFT JOIN history h 
+  ON h.user_id = u.user_id
+ AND h.last_played_date::date = $1
+GROUP BY TRIM(a.name)
+ORDER BY TRIM(a.name);
+    `;
+    const result = await executeQuery(sql, [indianDate]);
+      return result.rows;
+    } catch (error) {
+      console.error("Error getting daily agent report:", error);
+      throw error;
+    }
+};
+  
+export const getDailyHistoryUserIdsDao = async () => {
+  try {
+    const date = new Date().toLocaleDateString("en-CA", {
+      timeZone: "Asia/Kolkata",
+    });
+    const indianDate = new Date(date).toISOString().split("T")[0]; 
+    const sql = `
+      SELECT
+        COALESCE(SUM(total_deposit_amount::NUMERIC), 0) AS total_deposit_amount,
+        COALESCE(SUM(total_withdrawal_amount::NUMERIC), 0) AS total_withdrawal_amount,
+        ARRAY_AGG(DISTINCT user_id) AS user_ids
+      FROM history
+      WHERE last_played_date::date = $1;
+    `;
+    const result = await executeQuery(sql, [indianDate]);
+    const row = result.rows[0];
+    const nowIST = new Date().toLocaleString("en-US", {
+      timeZone: "Asia/Kolkata",
+    });
+    const dateObj = new Date(nowIST);
+
+    let hours = dateObj.getHours();
+    const minutes = dateObj.getMinutes().toString().padStart(2, "0");
+    const ampm = hours >= 12 ? "PM" : "AM";
+    hours = hours % 12 || 12;
+
+    const day = dateObj.getDate().toString().padStart(2, "0");
+    const month = (dateObj.getMonth() + 1).toString().padStart(2, "0");
+    const year = dateObj.getFullYear();
+
+    const formattedTime = `${hours}:${minutes} ${ampm} ${day}-${month}-${year}`;
+    const data = {
+      time: formattedTime,
+      total_deposit_amount: row.total_deposit_amount,
+      total_withdrawal_amount: row.total_withdrawal_amount,
+      user_count: row.user_ids?.length || 0,
+    };
+    return data;
+  } catch (error) {
+    console.error("Error getting daily history user IDs:", error);
+    throw error;
+  }
+};
 
 export const getHourlyActiveClientsDao = async () => {
   try {
