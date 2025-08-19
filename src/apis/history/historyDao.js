@@ -67,8 +67,9 @@ export const getHourlyHistoryAllAgentWiseUserIdsDao = async () => {
     const indianDate = new Date(date).toISOString().split("T")[0];
     const sql = `
      WITH DeduplicatedHistory AS (
-  SELECT DISTINCT ON (h.last_played_date)
-    h.user_id,
+  SELECT DISTINCT ON (h.user_id,h.last_played_date, h.total_deposit_amount,
+    h.total_withdrawal_amount)
+   h.user_id,
     h.last_played_date,
     h.total_deposit_amount,
     h.total_withdrawal_amount
@@ -107,7 +108,8 @@ export const getHourlyHistoryAllUserIdsDao = async () => {
     const indianDate = new Date(date).toISOString().split("T")[0];
     const sql = `
      WITH DeduplicatedHistory AS (
-  SELECT DISTINCT ON (h.last_played_date)
+    SELECT DISTINCT ON (h.user_id,h.last_played_date, h.total_deposit_amount,
+    h.total_withdrawal_amount)
     h.user_id,
     h.last_played_date,
     h.total_deposit_amount,
@@ -124,7 +126,7 @@ SELECT
   COALESCE(SUM(dh.total_withdrawal_amount::NUMERIC), 0) AS total_withdrawal_amount,
   ARRAY_AGG(DISTINCT dh.user_id) AS user_ids
 FROM DeduplicatedHistory dh
-WHERE dh.user_id IS NOT NULL
+ WHERE dh.user_id IS NOT NULL
     `;
     const result = await executeQuery(sql, [indianDate]);
     const row = result.rows[0];
