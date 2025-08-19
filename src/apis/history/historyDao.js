@@ -124,36 +124,33 @@ export const getHourlyHistoryAllUserIdsDao = async () => {
 
 export const getHourlyActiveClientsDao = async () => {
   try {
+    const date = new Date().toLocaleDateString("en-CA", {
+      timeZone: "Asia/Kolkata",
+    });
+    const reportDate = new Date(date).toISOString().split("T")[0];
     const sql = `
       SELECT
-        COALESCE(a.name, 'Unassigned') AS agent_name,
+        COALESCE(TRIM(a.name), 'Unassigned') AS agent_name,
         ARRAY_AGG(DISTINCT u.user_id) FILTER (
-          WHERE h.created_at >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '1 hour'
-            AND h.created_at <= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
-            AND h.last_played_date = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC+4')::date
+          WHERE h.last_played_date::date = $1
         ) AS active_client_ids,
         COUNT(DISTINCT u.user_id) FILTER (
-          WHERE h.created_at >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '1 hour'
-            AND h.created_at <= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
-            AND h.last_played_date = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC+4')::date
+          WHERE h.last_played_date::date = $1
         ) AS active_clients_count,
         ARRAY_AGG(DISTINCT u.user_id) FILTER (
-          WHERE h.created_at IS NULL
-             OR h.created_at < (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '1 hour'
-             OR h.last_played_date != (CURRENT_TIMESTAMP AT TIME ZONE 'UTC+4')::date
+          WHERE h.last_played_date IS NULL OR h.last_played_date::date <> $1
         ) AS inactive_client_ids,
         COUNT(DISTINCT u.user_id) FILTER (
-          WHERE h.created_at IS NULL
-             OR h.created_at < (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '1 hour'
-             OR h.last_played_date != (CURRENT_TIMESTAMP AT TIME ZONE 'UTC+4')::date
+          WHERE h.last_played_date IS NULL OR h.last_played_date::date <> $1
         ) AS inactive_clients_count
       FROM users u
       LEFT JOIN agents a ON u.agent_id = a.id
       LEFT JOIN history h ON h.user_id = u.user_id
-      GROUP BY a.name
+      GROUP BY TRIM(a.name)
+      ORDER BY TRIM(a.name);
     `;
 
-    const result = await executeQuery(sql);
+    const result = await executeQuery(sql, [reportDate]);
     return result.rows.length
       ? result.rows
       : [
@@ -170,6 +167,7 @@ export const getHourlyActiveClientsDao = async () => {
     throw new Error(`Failed to fetch hourly active clients: ${error.message}`);
   }
 };
+
 
 export const getUnassignedUsersReportDao = async () => {
   try {

@@ -27,8 +27,7 @@ export async function sendTelegramMessage(message ,chatId) {
     throw error; // Throw error to be handled by sendMessageWithRetry
   }
 }
-export async function sendTelegramDocument(filePath, maxRetries = 5) {
-  const chatId = process.env.TELEGRAM_CHAT_ID;
+export async function sendTelegramDocument(filePath,chatId, maxRetries = 5) {
   const TELEGRAM_URL = process.env.TELEGRAM_URL;
   const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
   if (!TELEGRAM_BOT_TOKEN || !chatId) {

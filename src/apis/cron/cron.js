@@ -19,10 +19,11 @@ let isCronScheduled = false;
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function sendDocumentWithRetry(filePath, maxRetries = 5) {
+async function sendDocumentWithRetry(filePath, chatId, maxRetries = 5) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    console.log(filePath, "heey");
     try {
-      const success = await sendTelegramDocument(filePath);
+      const success = await sendTelegramDocument(filePath, chatId);
       if (success) {
         console.log(`Successfully sent document: ${filePath}`);
         return true;
@@ -53,7 +54,11 @@ async function generateAndSendUnassignedReport(date) {
 
   try {
     const csvFilePath = await generateCSV(reports, "unassigned", date);
-    const csvSuccess = await sendDocumentWithRetry(csvFilePath);
+    console.log(csvFilePath,"hey user");
+    const csvSuccess = await sendDocumentWithRetry(
+      csvFilePath,
+      process.env.TELEGRAM_CHAT_DAILY_REPORT
+    );
     if (!csvSuccess) {
       console.error("Failed to send unassigned report CSV");
     }
@@ -72,7 +77,10 @@ async function generateAndSendWeeklyReport(date) {
     const csvFilePath = "./7 days users (2).csv";
     console.log(`Processing CSV file: ${csvFilePath}`);
 
-    const csvSuccess = await sendDocumentWithRetry(csvFilePath);
+    const csvSuccess = await sendDocumentWithRetry(
+      csvFilePath,
+      process.env.TELEGRAM_CHAT_DAILY_REPORT
+    );
     if (!csvSuccess) {
       console.error("Failed to send weekly report CSV");
     }
@@ -87,7 +95,10 @@ async function generateAndLogDailyReport(date) {
   console.log(`Processing ${reports.length} agents for daily report`);
   try {
     const csvFilePath = await generateCSV(reports, "daily", date);
-    const csvSuccess = await sendDocumentWithRetry(csvFilePath);
+    const csvSuccess = await sendDocumentWithRetry(
+      csvFilePath,
+      process.env.TELEGRAM_CHAT_DAILY_REPORT
+    );
     if (!csvSuccess) {
       console.error("Failed to send daily report CSV");
     }
@@ -101,7 +112,7 @@ async function generateAndLogDailyReport(date) {
   }
 
   await generateAndSendUnassignedReport(date);
-  await generateAndSendWeeklyReport(date);
+  // await generateAndSendWeeklyReport(date);
 }
 async function generateAndSendHourlyActiveClientsReport(date) {
   const reports = await getHourlyActiveClientsDao();
@@ -117,7 +128,11 @@ async function generateAndSendHourlyActiveClientsReport(date) {
       "hourly-active-clients",
       date
     );
-    const csvSuccess = await sendDocumentWithRetry(csvFilePath);
+    console.log(csvFilePath,"hey user from the user to get data");
+    const csvSuccess = await sendDocumentWithRetry(
+      csvFilePath,
+      process.env.TELEGRAM_CHAT_HOURLY_ACTIVE_CLIENTS_REPORT
+    );
     if (!csvSuccess) {
       console.error("Failed to send hourly active clients report CSV");
     }
@@ -241,6 +256,16 @@ export function startUserFetchCron() {
       const date = new Date().toLocaleString("en-GB");
       sendHourlyAgentWiseMessage();
       console.log("Hourly Cron started Agents Clients at", date);
+    },
+    { timezone: "Asia/Dubai" }
+  );
+  
+  cron.schedule(
+    "0 * * * *",
+    () => {
+      const date = new Date().toLocaleString("en-GB");
+      generateAndSendHourlyActiveClientsReport(date);
+      console.log("Hourly Cron started All Clients pdf at", date);
     },
     { timezone: "Asia/Dubai" }
   );
