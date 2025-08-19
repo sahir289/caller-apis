@@ -57,18 +57,29 @@ export const getHourlyHistoryAllAgentWiseUserIdsDao = async () => {
     });
     const indianDate = new Date(date).toISOString().split("T")[0];
     const sql = `
-     SELECT
+     WITH DeduplicatedHistory AS (
+  SELECT DISTINCT ON (h.last_played_date)
+    h.user_id,
+    h.last_played_date,
+    h.total_deposit_amount,
+    h.total_withdrawal_amount
+  FROM history h
+  WHERE h.last_played_date::date = $1
+  ORDER BY 
+    h.last_played_date,
+    h.created_at DESC 
+)
+SELECT
   TRIM(a.name) AS agent_name,
-  COUNT(DISTINCT u.user_id) FILTER (WHERE h.user_id IS NOT NULL) AS active_clients_count,
-  COALESCE(SUM(h.total_deposit_amount::NUMERIC), 0) AS total_deposit_amount,
-  COALESCE(SUM(h.total_withdrawal_amount::NUMERIC), 0) AS total_withdrawal_amount
+  COUNT(DISTINCT u.user_id) FILTER (WHERE dh.user_id IS NOT NULL) AS active_clients_count,
+  COALESCE(SUM(dh.total_deposit_amount::NUMERIC), 0) AS total_deposit_amount,
+  COALESCE(SUM(dh.total_withdrawal_amount::NUMERIC), 0) AS total_withdrawal_amount
 FROM agents a
 LEFT JOIN users u ON u.agent_id = a.id
-LEFT JOIN history h 
-  ON h.user_id = u.user_id
- AND h.last_played_date::date = $1
+LEFT JOIN DeduplicatedHistory dh 
+  ON dh.user_id = u.user_id
 GROUP BY TRIM(a.name)
-ORDER BY TRIM(a.name);
+ORDER BY TRIM(a.name)
     `;
     const result = await executeQuery(sql, [indianDate]);
     return result.rows;
@@ -83,14 +94,26 @@ export const getHourlyHistoryAllUserIdsDao = async () => {
     const date = new Date().toLocaleDateString("en-CA", {
       timeZone: "Asia/Kolkata",
     });
-    const indianDate = new Date(date).toISOString().split("T")[0]; 
+    const indianDate = new Date(date).toISOString().split("T")[0];
     const sql = `
-      SELECT
-        COALESCE(SUM(total_deposit_amount::NUMERIC), 0) AS total_deposit_amount,
-        COALESCE(SUM(total_withdrawal_amount::NUMERIC), 0) AS total_withdrawal_amount,
-        ARRAY_AGG(DISTINCT user_id) AS user_ids
-      FROM history
-      WHERE last_played_date::date = $1;
+     WITH DeduplicatedHistory AS (
+  SELECT DISTINCT ON (h.last_played_date)
+    h.user_id,
+    h.last_played_date,
+    h.total_deposit_amount,
+    h.total_withdrawal_amount
+  FROM history h
+  WHERE h.last_played_date::date = $1
+  ORDER BY 
+    h.last_played_date,
+    h.created_at DESC 
+)
+SELECT
+  COALESCE(SUM(dh.total_deposit_amount::NUMERIC), 0) AS total_deposit_amount,
+  COALESCE(SUM(dh.total_withdrawal_amount::NUMERIC), 0) AS total_withdrawal_amount,
+  ARRAY_AGG(DISTINCT dh.user_id) AS user_ids
+FROM DeduplicatedHistory dh
+WHERE dh.user_id IS NOT NULL
     `;
     const result = await executeQuery(sql, [indianDate]);
     const row = result.rows[0];
