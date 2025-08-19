@@ -76,8 +76,11 @@ export const getHourlyHistoryAllAgentWiseUserIdsDao = async () => {
   FROM history h
   WHERE h.last_played_date::date = $1
   AND h.is_obsolete = false
-  ORDER BY 
+  ORDER BY
+  h.user_id,
     h.last_played_date,
+     h.total_deposit_amount,
+      h.total_withdrawal_amount,
     h.created_at DESC 
 )
 SELECT
@@ -117,8 +120,11 @@ export const getHourlyHistoryAllUserIdsDao = async () => {
   FROM history h
   WHERE h.last_played_date::date = $1
   AND h.is_obsolete = false
-  ORDER BY 
+  ORDER BY
+      h.user_id,
     h.last_played_date,
+     h.total_deposit_amount,
+      h.total_withdrawal_amount,
     h.created_at DESC 
 )
 SELECT
