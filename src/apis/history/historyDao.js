@@ -50,7 +50,7 @@ export const getDailyAgentReportDao = async () => {
     throw error;
   }
 };
-export const getAgentDailySummaryDao = async () => {
+export const getHourlyHistoryAllAgentWiseUserIdsDao = async () => {
   try {
     const date = new Date().toLocaleDateString("en-CA", {
       timeZone: "Asia/Kolkata",
@@ -71,14 +71,14 @@ GROUP BY TRIM(a.name)
 ORDER BY TRIM(a.name);
     `;
     const result = await executeQuery(sql, [indianDate]);
-      return result.rows;
-    } catch (error) {
-      console.error("Error getting daily agent report:", error);
-      throw error;
-    }
+    return result.rows;
+  } catch (error) {
+    console.error("Error getting daily agent report:", error);
+    throw error;
+  }
 };
   
-export const getDailyHistoryUserIdsDao = async () => {
+export const getHourlyHistoryAllUserIdsDao = async () => {
   try {
     const date = new Date().toLocaleDateString("en-CA", {
       timeZone: "Asia/Kolkata",

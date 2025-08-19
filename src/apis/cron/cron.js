@@ -10,8 +10,8 @@ import { sendTelegramMessage } from "../../utils/telegramSender.js";
 import { generateCSV } from "../../utils/generatepdf.js";
 import { getHourlyActiveClientsDao } from "../history/historyDao.js";
 import {
-  getAgentDailySummaryDao,
-  getDailyHistoryUserIdsDao,
+  getHourlyHistoryAllAgentWiseUserIdsDao,
+  getHourlyHistoryAllUserIdsDao,
 } from "../history/historyDao.js";
 dotenv.config();
 
@@ -130,9 +130,9 @@ async function generateAndSendHourlyActiveClientsReport(date) {
     console.error(`Error generating hourly active clients CSV: ${err.message}`);
   }
 }
-async function sendHourlySummaryMessage() {
+async function sendHourlyAgentWiseMessage() {
   try {
-    const reports = await getAgentDailySummaryDao();
+    const reports = await getHourlyHistoryAllAgentWiseUserIdsDao();
     if (!reports.length) {
       await sendTelegramMessage(
         "Hourly Summary: No activity recorded for today.",
@@ -171,7 +171,6 @@ async function sendHourlySummaryMessage() {
         await sendTelegramMessage(
           message,
           process.env.TELEGRAM_CHAT_HOURLY_AGENTS_CLIENTS
-
         );
         message = "";
         firstMessage = false; // baad ke messages me header nahi aayega
@@ -192,9 +191,9 @@ async function sendHourlySummaryMessage() {
 }
 
 
-async function sendHourlySummaryFromData() {
+async function sendHourlySummaryAllClientsTotalData() {
   try {
-    const row = await getDailyHistoryUserIdsDao();
+    const row = await getHourlyHistoryAllUserIdsDao();
     if (!row) {
       await sendTelegramMessage(
         "Hourly Summary: No activity recorded for today.",
@@ -204,7 +203,6 @@ async function sendHourlySummaryFromData() {
     }
 
     const MAX_MESSAGE_LENGTH = 2000;
-
 
     let message = `📊 Hourly Summary 📊\n\n`;
     message += `⏰ Time : ${row.time}\n\n`;
@@ -241,7 +239,7 @@ export function startUserFetchCron() {
     "0 * * * *",
     () => {
       const date = new Date().toLocaleString("en-GB");
-      sendHourlySummaryMessage();
+      sendHourlyAgentWiseMessage();
       console.log("Hourly Cron started Agents Clients at", date);
     },
     { timezone: "Asia/Dubai" }
@@ -250,7 +248,7 @@ export function startUserFetchCron() {
     "0 * * * *",
     () => {
       const date = new Date().toLocaleString("en-GB");
-      sendHourlySummaryFromData();
+      sendHourlySummaryAllClientsTotalData();
       console.log("Hourly Cron started All Clients at", date);
     },
     { timezone: "Asia/Dubai" }
