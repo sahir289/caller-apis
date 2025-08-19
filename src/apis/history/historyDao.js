@@ -14,7 +14,16 @@ export const createhistoryDao = async (data) => {
   }
 };
   
-  
+export const gethistoryByLastPlayedDateDao = async (data) => {
+  try {
+    const [sql, params] = buildSelectQuery("history", data);
+    const result = await executeQuery(sql, params);
+    return result.rows[0];
+  } catch (error) {
+    console.error("Error creating history:", error);
+    throw error;
+  }
+};
 export const getDailyAgentReportDao = async () => {
   try {
     const sql = `

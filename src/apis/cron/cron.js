@@ -21,7 +21,6 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function sendDocumentWithRetry(filePath, chatId, maxRetries = 5) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    console.log(filePath, "heey");
     try {
       const success = await sendTelegramDocument(filePath, chatId);
       if (success) {
@@ -54,7 +53,6 @@ async function generateAndSendUnassignedReport(date) {
 
   try {
     const csvFilePath = await generateCSV(reports, "unassigned", date);
-    console.log(csvFilePath,"hey user");
     const csvSuccess = await sendDocumentWithRetry(
       csvFilePath,
       process.env.TELEGRAM_CHAT_DAILY_REPORT
@@ -128,7 +126,6 @@ async function generateAndSendHourlyActiveClientsReport(date) {
       "hourly-active-clients",
       date
     );
-    console.log(csvFilePath,"hey user from the user to get data");
     const csvSuccess = await sendDocumentWithRetry(
       csvFilePath,
       process.env.TELEGRAM_CHAT_HOURLY_ACTIVE_CLIENTS_REPORT
