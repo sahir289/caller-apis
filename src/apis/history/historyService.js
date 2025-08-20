@@ -38,6 +38,9 @@ export const createhistoryService = async (payloadArray , records) => {
         const createdRecord = await createhistoryDao(payload);
         results.push(createdRecord.id);
       }
+      else {
+        console.warn(`duplicate entry found in ${payload.company_name}`);
+      }
     }
     return results;
   } catch (error) {
