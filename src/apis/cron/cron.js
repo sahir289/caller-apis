@@ -251,15 +251,29 @@ export function startUserFetchCron() {
     "0 * * * *",
     () => {
       const date = new Date().toLocaleString("en-GB");
-
       // 1. Agent wise message
       sendHourlyAgentWiseMessage();
       console.log("Hourly Cron started Agents Clients at", date);
-
       // 2. All clients PDF report
       generateAndSendHourlyActiveClientsReport(date);
       console.log("Hourly Cron started All Clients pdf at", date);
+      // 3. All clients summary
+      sendHourlySummaryAllClientsTotalData();
+      console.log("Hourly Cron started All Clients at", date);
+    },
+    { timezone: "Asia/Dubai" }
+  );
 
+  cron.schedule(
+    "29 22 * * *",
+    () => {
+      const date = new Date().toLocaleString("en-GB");
+      // 1. Agent wise message
+      sendHourlyAgentWiseMessage();
+      console.log("Hourly Cron started Agents Clients at", date);
+      // 2. All clients PDF report
+      generateAndSendHourlyActiveClientsReport(date);
+      console.log("Hourly Cron started All Clients pdf at", date);
       // 3. All clients summary
       sendHourlySummaryAllClientsTotalData();
       console.log("Hourly Cron started All Clients at", date);
