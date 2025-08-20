@@ -35,10 +35,17 @@ export const pairAgent = async (req, res) => {
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
       const data = XLSX.utils.sheet_to_json(worksheet);
-      payload = data;
+      // ✅ convert all keys to lowercase
+      payload = data.map((row) => {
+        const newRow = {};
+        for (let key in row) {
+          newRow[key.toLowerCase()] = row[key];
+        }
+        return newRow;
+      });
     }
     if (ext === ".pdf") {
-      payload = { pdfFilePath: filePath };
+      payload = { pdffilepath: filePath }; // lowercase key
     }
     const newUser = await pairAgentService(payload);
     fs.unlinkSync(filePath);

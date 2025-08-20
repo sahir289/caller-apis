@@ -16,8 +16,8 @@ export const createAgentService = async (payload) => {
 export const pairAgentService = async (payload) => {
   try {
     for (const item of payload) {
-      let userId = item.UserID;
-      let agentName = item.AGENT ? String(item.AGENT).toLowerCase().trim() : null;
+      let userId = item.userid;
+      let agentName = item.agent ? String(item.agent).toLowerCase().trim() : null;
       let agent;
       if (!agentName) {
         agent = await getAgentDao("self");
