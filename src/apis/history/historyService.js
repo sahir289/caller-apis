@@ -5,8 +5,9 @@ import {
 } from "./historyDao.js";
 import { getUsersByIDDao } from "../users/usersDao.js";
 import { createusersDao } from "../users/usersDao.js";
+import { createRecordsDao } from "../records/recordsDao.js";
 
-export const createhistoryService = async (payloadArray) => {
+export const createhistoryService = async (payloadArray , records) => {
     try {
     const results = [];
     for (const payload of payloadArray) {
@@ -14,9 +15,15 @@ export const createhistoryService = async (payloadArray) => {
       if (!company) {
         company = await createCompanyDao({ name: payload.company_name });
       }
+      let RecordData = {
+        login_user_id: records.id,
+        company_id: company.id,
+        file: records.fileName,
+      };
+      await createRecordsDao(RecordData);
       const user = await getUsersByIDDao( payload.user_id);
       if (!user) {
-        const createUser = await createusersDao({ user_id: payload.user_id , company_id: company.id });
+         await createusersDao({ user_id: payload.user_id , company_id: company.id });
       }
       const data = {
         user_id: payload.user_id,

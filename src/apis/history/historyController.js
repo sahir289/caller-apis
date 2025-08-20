@@ -34,6 +34,8 @@ export const createhistory = async (req, res) => {
       return res.status(400).json({ error: "No file uploaded" });
     }
     const filePath = req.file.path;
+    let fileName = req.file.originalname;
+    let {id} = req.user;
     const ext = path.extname(req.file.originalname).toLowerCase();
     if (![".xlsx", ".xls", ".csv"].includes(ext)) {
       fs.unlinkSync(filePath);
@@ -139,7 +141,7 @@ export const createhistory = async (req, res) => {
       })
       .filter((user) => user !== null);
     // newhistory.last_played_date = 
-    const creatuser = await createhistoryService(newhistory);
+    const creatuser = await createhistoryService(newhistory,{id,fileName});
     console.log(`${company_name} History created successfully`);
     return res.status(201).json({
       message: "history created successfully",

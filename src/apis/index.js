@@ -7,6 +7,7 @@ import agentRouter from "./agents/index.js";
 import cronRouter from "./cron/index.js";
 import userRouter from "./users/index.js";
 import loginRouter from "./login/index.js";
+import recordRouter from "./records/index.js";
 const router = express.Router();
 
 // Mount the users router on /users
@@ -16,5 +17,6 @@ router.use("/agents", agentRouter);
 router.use("/cron", cronRouter);
 router.use("/users", userRouter);
 router.use("/login", loginRouter);
+router.use("/records", recordRouter);
 
 export default router;
