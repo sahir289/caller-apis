@@ -9,15 +9,10 @@ import { createRecordsDao } from "../records/recordsDao.js";
 
 export const createhistoryService = async (payloadArray , records) => {
   try {
-    let RecordData = {
-      login_user_id: records.id,
-      company_id: company.id,
-      file: records.fileName,
-    };
-    await createRecordsDao(RecordData);
     const results = [];
+    let company
     for (const payload of payloadArray) {
-      let company = await getCompanyDao({ name: payload.company_name });
+      company = await getCompanyDao({ name: payload.company_name });
       if (!company) {
         company = await createCompanyDao({ name: payload.company_name });
       }
@@ -38,10 +33,17 @@ export const createhistoryService = async (payloadArray , records) => {
         const createdRecord = await createhistoryDao(payload);
         results.push(createdRecord.id);
       }
+     
       else {
         console.warn(`duplicate entry found in ${payload.company_name}`);
       }
     }
+    let RecordData = {
+      login_user_id: records.id,
+      company_id: company.id,
+      file: records.fileName,
+    };
+    await createRecordsDao(RecordData);
     return results;
   } catch (error) {
     console.error(" Error during bulk user creation:", error);
