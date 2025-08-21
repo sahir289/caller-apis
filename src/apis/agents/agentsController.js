@@ -23,6 +23,8 @@ export const pairAgent = async (req, res) => {
       return res.status(400).json({ error: "No file uploaded" });
     }
     const filePath = req.file.path;
+    let fileName = req.file.originalname;
+    let { id } = req.user;
     const ext = path.extname(req.file.originalname).toLowerCase();
     const supportedExtensions = [".xlsx", ".xls", ".csv", ".pdf"];
     if (!supportedExtensions.includes(ext)) {
@@ -47,7 +49,7 @@ export const pairAgent = async (req, res) => {
     if (ext === ".pdf") {
       payload = { pdffilepath: filePath }; // lowercase key
     }
-    const newUser = await pairAgentService(payload);
+    const newUser = await pairAgentService(payload, { id, fileName });
     fs.unlinkSync(filePath);
     return res.status(201).json({
       message: "Agent created successfully",

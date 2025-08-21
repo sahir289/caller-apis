@@ -18,8 +18,9 @@ export const createRecords = async (req, res) => {
 
 export const getRecords = async (req, res) => {
   try {
-    const payload = req.body;
-    const newUser = await getRecordsService(payload);
+     const { page, size } = req.query;
+      const filter = { page, size };
+    const newUser = await getRecordsService(filter);
     return res.status(201).json({
       message: "get records successfully",
       data: newUser,

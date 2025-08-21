@@ -4,7 +4,7 @@ import { createRecords,getRecords } from "./recordsController.js";
 import authMiddleware from "../../middlewares/authMiddleware.js";
 const router = express.Router();
 
-router.get("/", authMiddleware, createRecords);
+router.get("/",authMiddleware, getRecords);
 
 
 router.post("/createRecord", authMiddleware, createRecords);
