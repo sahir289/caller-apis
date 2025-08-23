@@ -265,18 +265,18 @@ export function startUserFetchCron() {
   );
 
   cron.schedule(
-    "40 29 22 * * *",
+    "55 29 22 * * *",
     () => {
       const date = new Date().toLocaleString("en-GB");
+      // 3. All clients summary
+      sendHourlySummaryAllClientsTotalData();
+      console.log("Hourly Cron started All Clients at", date);
       // 1. Agent wise message
       sendHourlyAgentWiseMessage();
       console.log("Hourly Cron started Agents Clients at", date);
       // 2. All clients PDF report
       generateAndSendHourlyActiveClientsReport(date);
       console.log("Hourly Cron started All Clients pdf at", date);
-      // 3. All clients summary
-      sendHourlySummaryAllClientsTotalData();
-      console.log("Hourly Cron started All Clients at", date);
     },
     { timezone: "Asia/Dubai" }
   );
