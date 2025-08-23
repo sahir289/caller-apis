@@ -66,7 +66,13 @@ export const getHourlyHistoryAllAgentWiseUserIdsDao = async () => {
     });
     const indianDate = new Date(date).toISOString().split("T")[0];
     const sql = `
-     WITH DeduplicatedHistory AS (
+     WITH WithdrawReversalIDs AS (
+    SELECT REGEXP_MATCH(config->>'Description', 'Withdraw Reversal : ([A-Z0-9]+)') AS withdraw_id
+    FROM public.history
+    WHERE last_played_date::date = $1
+      AND config->>'Description' ILIKE '%Withdraw Reversal%'
+),
+      DeduplicatedHistory AS (
   SELECT DISTINCT ON (h.user_id,h.last_played_date, h.total_deposit_amount,
     h.total_withdrawal_amount)
    h.user_id,
@@ -75,10 +81,14 @@ export const getHourlyHistoryAllAgentWiseUserIdsDao = async () => {
     h.total_withdrawal_amount
   FROM history h
   WHERE h.last_played_date::date = $1
-  AND (
-       h.config->>'Description' Not ILIKE '%Withdraw Reversal%'
-       OR h.config->>'Remark' Not ILIKE '%Hold%'
-  )
+   AND (
+          config->>'Remark' NOT ILIKE '%Hold%'
+          OR config->>'Description' NOT ILIKE ANY (
+              SELECT '%' || w.withdraw_id[1] || '%'
+              FROM WithdrawReversalIDs w
+              WHERE w.withdraw_id IS NOT NULL
+          )
+      )
   AND h.is_obsolete = false
   ORDER BY
   h.user_id,
@@ -114,33 +124,42 @@ export const getHourlyHistoryAllUserIdsDao = async () => {
     });
     const indianDate = new Date(date).toISOString().split("T")[0];
     const sql = `
-     WITH DeduplicatedHistory AS (
-    SELECT DISTINCT ON (h.user_id,h.last_played_date, h.total_deposit_amount,
-    h.total_withdrawal_amount)
-    h.user_id,
-    h.last_played_date,
-    h.total_deposit_amount,
-    h.total_withdrawal_amount
-  FROM history h
-  WHERE h.last_played_date::date = $1
-  AND (
-       h.config->>'Description' Not ILIKE '%Withdraw Reversal%'
-       OR h.config->>'Remark' Not ILIKE '%Hold%'
-  )
-  AND h.is_obsolete = false
-  ORDER BY
-      h.user_id,
-    h.last_played_date,
-     h.total_deposit_amount,
-      h.total_withdrawal_amount,
-    h.created_at DESC 
+   WITH WithdrawReversalIDs AS (
+    SELECT REGEXP_MATCH(config->>'Description', 'Withdraw Reversal : ([A-Z0-9]+)') AS withdraw_id
+    FROM public.history
+    WHERE last_played_date::date = $1
+      AND config->>'Description' ILIKE '%Withdraw Reversal%'
+),
+DeduplicatedHistory AS (
+    SELECT DISTINCT ON (h.user_id, h.last_played_date, h.total_deposit_amount, h.total_withdrawal_amount)
+        h.user_id,
+        h.last_played_date,
+        h.total_deposit_amount,
+        h.total_withdrawal_amount
+    FROM history h
+    WHERE h.last_played_date::date = $1
+      AND (
+          config->>'Remark' NOT ILIKE '%Hold%'
+          OR config->>'Description' NOT ILIKE ANY (
+              SELECT '%' || w.withdraw_id[1] || '%'
+              FROM WithdrawReversalIDs w
+              WHERE w.withdraw_id IS NOT NULL
+          )
+      )
+      AND h.is_obsolete = false
+    ORDER BY
+        h.user_id,
+        h.last_played_date,
+        h.total_deposit_amount,
+        h.total_withdrawal_amount,
+        h.created_at DESC
 )
 SELECT
-  COALESCE(SUM(dh.total_deposit_amount::NUMERIC), 0) AS total_deposit_amount,
-  COALESCE(SUM(dh.total_withdrawal_amount::NUMERIC), 0) AS total_withdrawal_amount,
-  ARRAY_AGG(DISTINCT dh.user_id) AS user_ids
+    COALESCE(SUM(dh.total_deposit_amount::NUMERIC), 0) AS total_deposit_amount,
+    COALESCE(SUM(dh.total_withdrawal_amount::NUMERIC), 0) AS total_withdrawal_amount,
+    ARRAY_AGG(DISTINCT dh.user_id) AS user_ids
 FROM DeduplicatedHistory dh
- WHERE dh.user_id IS NOT NULL
+WHERE dh.user_id IS NOT NULL;
     `;
     const result = await executeQuery(sql, [indianDate]);
     const row = result.rows[0];
@@ -148,7 +167,6 @@ FROM DeduplicatedHistory dh
       timeZone: "Asia/Kolkata",
     });
     const dateObj = new Date(nowIST);
-
     let hours = dateObj.getHours();
     const minutes = dateObj.getMinutes().toString().padStart(2, "0");
     const ampm = hours >= 12 ? "PM" : "AM";
