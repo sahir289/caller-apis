@@ -75,6 +75,10 @@ export const getHourlyHistoryAllAgentWiseUserIdsDao = async () => {
     h.total_withdrawal_amount
   FROM history h
   WHERE h.last_played_date::date = $1
+  AND (
+       h.config->>'Description' Not ILIKE '%Withdraw Reversal%'
+       OR h.config->>'Remark' Not ILIKE '%Hold%'
+  )
   AND h.is_obsolete = false
   ORDER BY
   h.user_id,
@@ -119,6 +123,10 @@ export const getHourlyHistoryAllUserIdsDao = async () => {
     h.total_withdrawal_amount
   FROM history h
   WHERE h.last_played_date::date = $1
+  AND (
+       h.config->>'Description' Not ILIKE '%Withdraw Reversal%'
+       OR h.config->>'Remark' Not ILIKE '%Hold%'
+  )
   AND h.is_obsolete = false
   ORDER BY
       h.user_id,

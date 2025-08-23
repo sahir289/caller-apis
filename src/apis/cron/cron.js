@@ -265,7 +265,7 @@ export function startUserFetchCron() {
   );
 
   cron.schedule(
-    "29 22 * * *",
+    "40 29 22 * * *",
     () => {
       const date = new Date().toLocaleString("en-GB");
       // 1. Agent wise message
