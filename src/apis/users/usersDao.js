@@ -1,7 +1,7 @@
 import { buildInsertQuery } from "../../utils/db.js";
 import { executeQuery } from "../../utils/db.js";
 import { buildSelectQuery } from "../../utils/db.js";
-
+import { InternalServerError } from "../../utils/errorHandler.js";
 export const createusersDao = async (data) => {
     try {
       const [sql, params] = buildInsertQuery("users", data);
@@ -10,7 +10,7 @@ export const createusersDao = async (data) => {
 
   } catch (error) {
     console.error("Error creating users:", error);
-    throw error;
+    throw new InternalServerError();
   }
 };
   
@@ -80,7 +80,7 @@ ORDER BY a.name
     return result.rows;
   } catch (error) {
     console.error("Error getting daily agent report:", error);
-    throw error;
+    throw new InternalServerError();
   }
 };
   
@@ -93,7 +93,7 @@ export const getusersDao = async (data) => {
     return result.rows;
   } catch (error) {
     console.error("Error creating users:", error);
-    throw error;
+    throw new InternalServerError();
   }
 };
 
@@ -109,7 +109,7 @@ export const getUsersByIDDao = async (user_id) => {
       "Error fetching users by usersID with agent_id IS NULL:",
       error
     );
-    throw error;
+    throw new InternalServerError();
   }
 };
   
@@ -128,7 +128,7 @@ export const getUserByUserIDDao = async (userId) => {
       "Error fetching user by UserID with agent_id IS NULL:",
       error
     );
-    throw error;
+    throw new InternalServerError();
   }
 };
 
@@ -140,7 +140,7 @@ export const updateUserAgentDao = async (userDbId, agentId) => {
     return result.rows;
   } catch (error) {
     console.error("Error updating user's agent_id:", error);
-    throw error;
+    throw new InternalServerError();
   }
 };
     

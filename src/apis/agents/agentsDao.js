@@ -1,6 +1,6 @@
 import { buildInsertQuery, buildSelectQuery } from "../../utils/db.js";
 import { executeQuery } from "../../utils/db.js";
-
+import { InternalServerError } from "../../utils/errorHandler.js";
 export const createAgentDao = async (data) => {
     try {
     const [sql, params] = buildInsertQuery("agents", data);
@@ -8,7 +8,7 @@ export const createAgentDao = async (data) => {
     return result.rows[0];
   } catch (error) {
     console.error("Error creating Agent:", error);
-    throw error;
+    throw new InternalServerError();
   }
 };
 
@@ -22,7 +22,7 @@ export const getAgentDao = async (agentName) => {
     return result.rows.length > 0 ? result.rows[0] : null;
   } catch (error) {
     console.error("Error in getAgentDao:", error);
-    throw error;
+    throw new InternalServerError();
   }
 };
   

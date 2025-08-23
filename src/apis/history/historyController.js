@@ -3,7 +3,8 @@ import fs from "fs";
 import XLSX from "xlsx";
 import { createhistoryService } from "./historyService.js";
 import { convertToDateOnly } from "../../utils/dateConverter.js";
-
+import { sendSuccess } from "../../utils/responseHandler.js"; 
+import {BadRequestError} from "../../utils/errorHandler.js";
 
 function getValidUserId(rawString, company_name) {
   let requiredBlockedUser = null;
@@ -17,7 +18,7 @@ function getValidUserId(rawString, company_name) {
     requiredBlockedUser &&
     !parts.some((p) => p.toLowerCase() === requiredBlockedUser.toLowerCase())
   ) {
-    throw new Error("Not a valid file"); 
+    throw new BadRequestError("Not a valid panel file"); 
   }
   return (
     parts.find(
@@ -31,7 +32,7 @@ export const createhistory = async (req, res) => {
   try {
     const { company_name } = req.body;
     if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
+      throw new BadRequestError("No file uploaded");
     }
     const filePath = req.file.path;
     let fileName = req.file.originalname;
@@ -39,7 +40,7 @@ export const createhistory = async (req, res) => {
     const ext = path.extname(req.file.originalname).toLowerCase();
     if (![".xlsx", ".xls", ".csv"].includes(ext)) {
       fs.unlinkSync(filePath);
-      return res.status(400).json({ error: "Unsupported file format" });
+      throw new BadRequestError("Unsupported file format");
     }
     const workbook = XLSX.readFile(filePath);
     const sheetName = workbook.SheetNames[0];
@@ -140,15 +141,11 @@ export const createhistory = async (req, res) => {
         }
       })
       .filter((user) => user !== null);
-    // newhistory.last_played_date = 
     const creatuser = await createhistoryService(newhistory,{id,fileName});
     console.log(`${company_name} History created successfully`);
-    return res.status(201).json({
-      message: "history created successfully",
-      data: creatuser,
-    });
+    return sendSuccess(res, "history created successfully",creatuser);
   } catch (error) {
     console.error("Error in createhistory:", error);
-    return res.status(500).json({ error: "Failed to create history" });
+    throw error;
   }
 };

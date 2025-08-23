@@ -5,17 +5,15 @@ import {
     loginService,
   
 } from "./loginService.js";
-
+import { sendSuccess } from "../../utils/responseHandler.js";
 export const createLoginUser = async (req, res) => {
   try {
       const payload = req.body;
       const newUser = await createLoginUsersService(payload);
-    return res.status(201).json({
-      message: "Login User created successfully",
-      data: newUser,
-    });
+    return sendSuccess(res, "Login User created successfully" ,newUser);
   } catch (error) {
-    return res.status(500).json({ error: "Failed to create login User" });
+    console.error("error creating login user", error)
+    throw error;
   }
 };
 
@@ -24,24 +22,21 @@ export const getLoginUser = async (req, res) => {
   try {
     const payload = req.body;
     const newUser = await getLoginUserService(payload);
-    return res.status(201).json({
-      message: "get login users successfully",
-      data: newUser,
-    });
+    return sendSuccess(res, "get login users successfully", newUser);
   } catch (error) {
-    return res.status(500).json({ error: "Failed to create login  User" });
+    console.error("error geting login user", error);
+    throw error;
   }
 };
 
 
 export const loginController = async (req, res) => {
     try {
-      
     const payload = req.body;
     const userLogin = await loginService(payload);
-    return res.status(userLogin.status).json(userLogin);
+      return sendSuccess(res,"Login Successfully",userLogin);
   } catch (error) {
-    return res.status(500).json({ error: "Failed to login User" });
-  }
+    console.error("failed login user", error);
+    throw error;  }
 };
   

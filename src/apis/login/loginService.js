@@ -1,6 +1,6 @@
 import { createHash,verifyHash } from "../../utils/bcryptPassword.js";
 import jwt from "jsonwebtoken";
-
+import { BadRequestError,NotFoundError } from "../../utils/errorHandler.js";
 
 import {
   createLoginUserDao,
@@ -37,14 +37,12 @@ export const loginService = async (payload) => {
   try {
     const user = await getLoginByUserName({ user_name: payload?.user_name });
     if (!user) {
-        return {
-            status: 404, message: "User not found"
-        };
+       throw new NotFoundError("Invalid credentials");
     }
     // Verify password
     const isValidPassword = await verifyHash(payload.password, user.password);
     if (!isValidPassword) {
-      return { status: 401, message: "Invalid password" };
+      throw new BadRequestError("Invalid Password")
     }
     const tokenPayload = {
       user_name: user.user_name,
@@ -55,11 +53,7 @@ export const loginService = async (payload) => {
       expiresIn: process.env.JWT_EXPIRES_IN,
     });
 
-      return {
-         status: 200,
-         message: "Login successful",
-         accessToken
-      };
+    return accessToken;
   } catch (error) {
     console.error("Error in login service", error);
     throw error;

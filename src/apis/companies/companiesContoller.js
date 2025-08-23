@@ -1,14 +1,12 @@
 import { createCompanyService } from "./companiesServices.js";
+import { sendSuccess } from "../../utils/responseHandler.js";
 
 export const createCompany = async (req, res) => {
   try {
       const payload = req.body;
-      const newUser = await createCompanyService(payload);
-    return res.status(201).json({
-      message: "Company created successfully",
-      data: newUser,
-    });
+    const newCompany = await createCompanyService(payload);
+    return sendSuccess(res, "Company created successfully", newCompany);
   } catch (error) {
-    return res.status(500).json({ error: "Failed to create Company" });
+    throw error
   }
 };

@@ -2,17 +2,16 @@ import { createAgentService, pairAgentService } from "./agentsService.js";
 import path from "path";
 import fs from "fs";
 import XLSX from "xlsx";
-
+import { sendSuccess } from "../../utils/responseHandler.js";
+import { BadRequestError } from "../../utils/errorHandler.js";
 export const createAgent = async (req, res) => {
   try {
     const payload = req.body;
     const newUser = await createAgentService(payload);
-    return res.status(201).json({
-      message: "Agent created successfully",
-      data: newUser,
-    });
+    return sendSuccess(res,"Agent created successfully",newUser)
   } catch (error) {
-    return res.status(500).json({ error: "Failed to create Agent" });
+    console.error("error while creating user",error)
+    throw error
   }
 };
 
@@ -20,7 +19,7 @@ export const createAgent = async (req, res) => {
 export const pairAgent = async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
+      throw new BadRequestError("No file uploaded");
     }
     const filePath = req.file.path;
     let fileName = req.file.originalname;
@@ -29,7 +28,7 @@ export const pairAgent = async (req, res) => {
     const supportedExtensions = [".xlsx", ".xls", ".csv", ".pdf"];
     if (!supportedExtensions.includes(ext)) {
       fs.unlinkSync(filePath);
-      return res.status(400).json({ error: "Unsupported file format" });
+      throw new BadRequestError("Unsupported file format");
     }
     let payload = [];
     if (ext === ".xlsx" || ext === ".xls" || ext === ".csv") {
@@ -37,7 +36,6 @@ export const pairAgent = async (req, res) => {
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
       const data = XLSX.utils.sheet_to_json(worksheet);
-      // ✅ convert all keys to lowercase
       payload = data.map((row) => {
         const newRow = {};
         for (let key in row) {
@@ -45,18 +43,25 @@ export const pairAgent = async (req, res) => {
         }
         return newRow;
       });
+      if (
+        payload.length === 0 ||
+        !("userid" in payload[0]) ||
+        !("agent" in payload[0])
+      ) {
+        fs.unlinkSync(filePath);
+        throw new BadRequestError(
+          "Invalid file: Please Upload Valid file"
+        );
+      }
     }
     if (ext === ".pdf") {
-      payload = { pdffilepath: filePath }; // lowercase key
+      payload = { pdffilepath: filePath }; 
     }
-    const newUser = await pairAgentService(payload, { id, fileName });
     fs.unlinkSync(filePath);
-    return res.status(201).json({
-      message: "Agent created successfully",
-      data: newUser,
-    });
+    const newUser = await pairAgentService(payload,{id,fileName});
+    return sendSuccess(res, "Agent Paired with Users successfully", newUser);
   } catch (error) {
     console.error("Error in pairAgent:", error);
-    return res.status(500).json({ error: "Failed to create Agent" });
+    throw error;
   }
 };

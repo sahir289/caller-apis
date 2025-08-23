@@ -1,6 +1,6 @@
 import { buildInsertQuery } from "../../utils/db.js";
 import { executeQuery } from "../../utils/db.js";
-import { buildSelectQuery } from "../../utils/db.js";
+import { InternalServerError } from "../../utils/errorHandler.js";
 
 export const createRecordsDao = async (data) => {
     try {
@@ -10,7 +10,7 @@ export const createRecordsDao = async (data) => {
 
   } catch (error) {
     console.error("Error creating records:", error);
-    throw error;
+    throw new InternalServerError();
   }
 };
 
@@ -19,7 +19,6 @@ export const getRecordsDao = async (filter) => {
   try {
     const { page = 1, size = 10 } = filter; // default page=1, size=10
     const offset = (page - 1) * size;
-
     // Main query with pagination
     const sql = `
         SELECT 
@@ -42,20 +41,17 @@ export const getRecordsDao = async (filter) => {
         ORDER BY r.created_at DESC
         LIMIT $1 OFFSET $2
       `;
-
     const rows = await executeQuery(sql, [size, offset]);
-
     // Get total count
     const countSql = `SELECT COUNT(*) AS total_count FROM records`;
     const countResult = await executeQuery(countSql);
     const totalCount = parseInt(countResult.rows[0].total_count, 10);
-
     return {
       data: rows.rows,
       totalCount,
     };
   } catch (error) {
     console.error("Error getting records:", error);
-    throw error;
+    throw new InternalServerError();
   }
 };

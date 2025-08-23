@@ -1,7 +1,7 @@
 import { buildInsertQuery } from "../../utils/db.js";
 import { executeQuery } from "../../utils/db.js";
 import { buildSelectQuery } from "../../utils/db.js";
-
+import { InternalServerError } from "../../utils/errorHandler.js";
 export const createhistoryDao = async (data) => {
     try {
       const [sql, params] = buildInsertQuery("history", data);
@@ -10,7 +10,7 @@ export const createhistoryDao = async (data) => {
 
   } catch (error) {
     console.error("Error creating history:", error);
-    throw error;
+    throw new InternalServerError();
   }
 };
   
@@ -21,7 +21,7 @@ export const gethistoryByLastPlayedDateDao = async (data) => {
     return result.rows[0];
   } catch (error) {
     console.error("Error creating history:", error);
-    throw error;
+    throw new InternalServerError();
   }
 };
 export const getDailyAgentReportDao = async () => {
@@ -56,7 +56,7 @@ export const getDailyAgentReportDao = async () => {
     return result.rows;
   } catch (error) {
     console.error("Error getting daily agent report:", error);
-    throw error;
+    throw new InternalServerError();
   }
 };
 export const getHourlyHistoryAllAgentWiseUserIdsDao = async () => {
@@ -99,7 +99,7 @@ ORDER BY TRIM(a.name)
     return result.rows;
   } catch (error) {
     console.error("Error getting daily agent report:", error);
-    throw error;
+    throw new InternalServerError();
   }
 };
   
@@ -160,7 +160,7 @@ FROM DeduplicatedHistory dh
     return data;
   } catch (error) {
     console.error("Error getting daily history user IDs:", error);
-    throw error;
+    throw new InternalServerError();
   }
 };
 
@@ -206,7 +206,7 @@ export const getHourlyActiveClientsDao = async () => {
         ];
   } catch (error) {
     console.error("Error getting hourly active clients:", error.message);
-    throw new Error(`Failed to fetch hourly active clients: ${error.message}`);
+    throw new InternalServerError();
   }
 };
 
@@ -242,7 +242,7 @@ export const getUnassignedUsersReportDao = async () => {
     return result.rows;
   } catch (error) {
     console.error("Error getting unassigned users report:", error);
-    throw error;
+    throw new InternalServerError();
   }
 };
 
@@ -255,6 +255,6 @@ export const gethistoryDao = async (data) => {
     return result.rows;
   } catch (error) {
     console.error("Error creating history:", error);
-    throw error;
+    throw new InternalServerError();
   }
 };
