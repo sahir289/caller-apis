@@ -13,7 +13,70 @@ export const createhistoryDao = async (data) => {
     throw new InternalServerError();
   }
 };
-  
+
+  export const getwithdrawReversalAmount = async (
+    date
+  ) => {
+    try {
+      const sql = `
+     SELECT
+    COALESCE(SUM(h.total_deposit_amount::NUMERIC), 0) AS total_deposit_amount,
+    Count(DISTINCT h.user_id) AS user_ids
+FROM history h
+WHERE h.last_played_date::date = $1
+  AND h.is_obsolete = false
+  AND config->>'Description' ILIKE '%Withdraw Reversal%'
+  AND h.user_id IS NOT NULL;
+  `;
+      const params = [date || null]; 
+      const result = await executeQuery(sql, params);
+      return result.rows[0]
+    } catch (error) {
+      console.error("Error fetching history IDs by date:", error);
+      throw new InternalServerError();
+    }
+  };
+export const getHistoryExcludedIDsByDateDao = async (
+  date
+) => {
+  try {
+    const sql = `
+    WITH WithdrawReversalIDs AS (
+    SELECT REGEXP_MATCH(config->>'Description', 'Withdraw Reversal : ([A-Z0-9]+)') AS withdraw_id
+    FROM public.history
+    WHERE last_played_date::date = $1
+      AND config->>'Description' ILIKE '%Withdraw Reversal%'
+)
+SELECT array_agg(h.id) AS all_ids
+FROM history h
+WHERE h.last_played_date::date = $1
+  AND h.is_obsolete = false
+  AND (
+    h.config->>'Description' ILIKE '%lc%'
+    OR h.config->>'Remark' ILIKE '%lc%'
+    OR h.config->>'Remark' ILIKE '%Hold%'
+    OR config->>'Remark' ILIKE '%Bonus%'
+    OR h.config->>'Description' ILIKE ANY (
+          SELECT '%' || w.withdraw_id[1] || '%'
+          FROM WithdrawReversalIDs w
+          WHERE w.withdraw_id IS NOT NULL
+      )
+  )
+  AND h.user_id IS NOT NULL;
+`;
+    const params = [date || null]; 
+    const result = await executeQuery(sql, params);
+
+    if (result.rows.length > 0 && result.rows[0].all_ids) {
+      return result.rows[0].all_ids; // Returns array of IDs
+    }
+
+    return null; // No IDs found
+  } catch (error) {
+    console.error("Error fetching history IDs by date:", error);
+    throw new InternalServerError();
+  }
+};
 export const gethistoryByLastPlayedDateDao = async (data) => {
   try {
     const [sql, params] = buildSelectQuery("history", data);
@@ -65,53 +128,37 @@ export const getHourlyHistoryAllAgentWiseUserIdsDao = async () => {
       timeZone: "Asia/Kolkata",
     });
     const indianDate = new Date(date).toISOString().split("T")[0];
+    const excludedIds = await getHistoryExcludedIDsByDateDao(indianDate);
     const sql = `
-     WITH WithdrawReversalIDs AS (
-    SELECT REGEXP_MATCH(config->>'Description', 'Withdraw Reversal : ([A-Z0-9]+)') AS withdraw_id
-    FROM public.history
-    WHERE last_played_date::date = $1
-      AND config->>'Description' ILIKE '%Withdraw Reversal%'
-),
-      DeduplicatedHistory AS (
-  SELECT DISTINCT ON (h.user_id,h.last_played_date, h.total_deposit_amount,
-    h.total_withdrawal_amount)
-   h.user_id,
-    h.last_played_date,
-    h.total_deposit_amount,
-    h.total_withdrawal_amount
-  FROM history h
-  WHERE h.last_played_date::date = $1
-   AND (
-          config->>'Remark' NOT ILIKE '%Hold%'
-          OR config ->> 'Description' NOT ILIKE '%lc%'
-          OR config->>'Remark' NOT ILIKE '%lc%'
-          OR config->>'Description' NOT ILIKE ANY (
-              SELECT '%' || w.withdraw_id[1] || '%'
-              FROM WithdrawReversalIDs w
-              WHERE w.withdraw_id IS NOT NULL
-          )
+      WITH DeduplicatedHistory AS (
+        SELECT DISTINCT ON (h.user_id, h.last_played_date, h.total_deposit_amount, h.total_withdrawal_amount)
+            h.user_id,
+            h.last_played_date,
+            h.total_deposit_amount,
+            h.total_withdrawal_amount
+        FROM history h
+        WHERE h.last_played_date::date = $1
+          AND h.is_obsolete = false
+          AND h.id NOT IN (SELECT UNNEST($2::UUID[])) 
+        ORDER BY
+            h.user_id,
+            h.last_played_date,
+            h.total_deposit_amount,
+            h.total_withdrawal_amount,
+            h.created_at DESC
       )
-  AND h.is_obsolete = false
-  ORDER BY
-  h.user_id,
-    h.last_played_date,
-     h.total_deposit_amount,
-      h.total_withdrawal_amount,
-    h.created_at DESC 
-)
-SELECT
-  TRIM(a.name) AS agent_name,
-  COUNT(DISTINCT u.user_id) FILTER (WHERE dh.user_id IS NOT NULL) AS active_clients_count,
-  COALESCE(SUM(dh.total_deposit_amount::NUMERIC), 0) AS total_deposit_amount,
-  COALESCE(SUM(dh.total_withdrawal_amount::NUMERIC), 0) AS total_withdrawal_amount
-FROM agents a
-LEFT JOIN users u ON u.agent_id = a.id
-LEFT JOIN DeduplicatedHistory dh 
-  ON dh.user_id = u.user_id
-GROUP BY TRIM(a.name)
-ORDER BY TRIM(a.name)
+      SELECT
+          TRIM(a.name) AS agent_name,
+          COUNT(DISTINCT u.user_id) FILTER (WHERE dh.user_id IS NOT NULL) AS active_clients_count,
+          COALESCE(SUM(dh.total_deposit_amount::NUMERIC), 0) AS total_deposit_amount,
+          COALESCE(SUM(dh.total_withdrawal_amount::NUMERIC), 0) AS total_withdrawal_amount
+      FROM agents a
+      LEFT JOIN users u ON u.agent_id = a.id
+      LEFT JOIN DeduplicatedHistory dh ON dh.user_id = u.user_id
+      GROUP BY TRIM(a.name)
+      ORDER BY TRIM(a.name)
     `;
-    const result = await executeQuery(sql, [indianDate]);
+    const result = await executeQuery(sql, [indianDate, excludedIds || []]);
     return result.rows;
   } catch (error) {
     console.error("Error getting daily agent report:", error);
@@ -125,47 +172,33 @@ export const getHourlyHistoryAllUserIdsDao = async () => {
       timeZone: "Asia/Kolkata",
     });
     const indianDate = new Date(date).toISOString().split("T")[0];
+    const excludedIds = await getHistoryExcludedIDsByDateDao(indianDate); // Fetch excluded IDs
     const sql = `
-   WITH WithdrawReversalIDs AS (
-    SELECT REGEXP_MATCH(config->>'Description', 'Withdraw Reversal : ([A-Z0-9]+)') AS withdraw_id
-    FROM public.history
-    WHERE last_played_date::date = $1
-      AND config->>'Description' ILIKE '%Withdraw Reversal%'
-),
-DeduplicatedHistory AS (
-    SELECT DISTINCT ON (h.user_id, h.last_played_date, h.total_deposit_amount, h.total_withdrawal_amount)
-        h.user_id,
-        h.last_played_date,
-        h.total_deposit_amount,
-        h.total_withdrawal_amount
-    FROM history h
-    WHERE h.last_played_date::date = $1
-      AND (
-          config->>'Remark' NOT ILIKE '%Hold%'
-          OR config ->> 'Description' NOT ILIKE '%lc%'
-          OR config->>'Remark' NOT ILIKE '%lc%'
-          OR config->>'Description' NOT ILIKE ANY (
-              SELECT '%' || w.withdraw_id[1] || '%'
-              FROM WithdrawReversalIDs w
-              WHERE w.withdraw_id IS NOT NULL
-          )
+      WITH DeduplicatedHistory AS (
+        SELECT DISTINCT ON (h.user_id, h.last_played_date, h.total_deposit_amount, h.total_withdrawal_amount)
+            h.user_id,
+            h.last_played_date,
+            h.total_deposit_amount,
+            h.total_withdrawal_amount
+        FROM history h
+        WHERE h.last_played_date::date = $1
+          AND h.is_obsolete = false
+          AND h.id NOT IN (SELECT UNNEST($2::UUID[])) 
+        ORDER BY
+            h.user_id,
+            h.last_played_date,
+            h.total_deposit_amount,
+            h.total_withdrawal_amount,
+            h.created_at DESC
       )
-      AND h.is_obsolete = false
-    ORDER BY
-        h.user_id,
-        h.last_played_date,
-        h.total_deposit_amount,
-        h.total_withdrawal_amount,
-        h.created_at DESC
-)
-SELECT
-    COALESCE(SUM(dh.total_deposit_amount::NUMERIC), 0) AS total_deposit_amount,
-    COALESCE(SUM(dh.total_withdrawal_amount::NUMERIC), 0) AS total_withdrawal_amount,
-    ARRAY_AGG(DISTINCT dh.user_id) AS user_ids
-FROM DeduplicatedHistory dh
-WHERE dh.user_id IS NOT NULL;
+      SELECT
+          COALESCE(SUM(dh.total_deposit_amount::NUMERIC), 0) AS total_deposit_amount,
+          COALESCE(SUM(dh.total_withdrawal_amount::NUMERIC), 0) AS total_withdrawal_amount,
+          ARRAY_AGG(DISTINCT dh.user_id) AS user_ids
+      FROM DeduplicatedHistory dh
+      WHERE dh.user_id IS NOT NULL;
     `;
-    const result = await executeQuery(sql, [indianDate]);
+    const result = await executeQuery(sql, [indianDate, excludedIds || []]); 
     const row = result.rows[0];
     const nowIST = new Date().toLocaleString("en-US", {
       timeZone: "Asia/Kolkata",
@@ -179,13 +212,14 @@ WHERE dh.user_id IS NOT NULL;
     const day = dateObj.getDate().toString().padStart(2, "0");
     const month = (dateObj.getMonth() + 1).toString().padStart(2, "0");
     const year = dateObj.getFullYear();
-
+    const WithDrawReversal =await getwithdrawReversalAmount(indianDate);
     const formattedTime = `${hours}:${minutes} ${ampm} ${day}-${month}-${year}`;
     const data = {
       time: formattedTime,
       total_deposit_amount: row.total_deposit_amount,
       total_withdrawal_amount: row.total_withdrawal_amount,
-      user_count: row.user_ids?.length || 0,
+      total_reversal_amount: WithDrawReversal.total_deposit_amount,
+      user_count: row.user_ids?.length   || 0,
     };
     return data;
   } catch (error) {

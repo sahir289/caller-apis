@@ -220,6 +220,7 @@ async function sendHourlySummaryAllClientsTotalData() {
     message += `⏰ Time : ${row.time}\n\n`;
     message += `💰 Total Deposit : ₹${row.total_deposit_amount}\n\n`;
     message += `💸 Total Withdrawal : ₹${row.total_withdrawal_amount}\n\n`;
+    message += `🔄 Total Reversal : ₹${row.total_reversal_amount}\n\n`;
     message += `👥 Active Clients : ${row.user_count}\n\n`;
     await sendTelegramMessage(
       message,
