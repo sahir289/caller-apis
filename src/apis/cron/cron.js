@@ -250,7 +250,9 @@ export function startUserFetchCron() {
   cron.schedule(
     "0 * * * *",
     () => {
-      const date = new Date().toLocaleString("en-GB");
+      const date = new Date().toLocaleDateString("en-CA", {
+        timeZone: "Asia/Dubai",
+      });
       // 1. Agent wise message
       sendHourlyAgentWiseMessage();
       console.log("Hourly Cron started Agents Clients at", date);
@@ -267,7 +269,9 @@ export function startUserFetchCron() {
   cron.schedule(
     "55 29 22 * * *",
     () => {
-      const date = new Date().toLocaleString("en-GB");
+      const date = new Date().toLocaleDateString("en-CA", {
+        timeZone: "Asia/Dubai",
+      });
       // 3. All clients summary
       sendHourlySummaryAllClientsTotalData();
       console.log("Hourly Cron started All Clients at", date);

@@ -83,6 +83,8 @@ export const getHourlyHistoryAllAgentWiseUserIdsDao = async () => {
   WHERE h.last_played_date::date = $1
    AND (
           config->>'Remark' NOT ILIKE '%Hold%'
+          OR config ->> 'Description' NOT ILIKE '%lc%'
+          OR config->>'Remark' NOT ILIKE '%lc%'
           OR config->>'Description' NOT ILIKE ANY (
               SELECT '%' || w.withdraw_id[1] || '%'
               FROM WithdrawReversalIDs w
@@ -140,6 +142,8 @@ DeduplicatedHistory AS (
     WHERE h.last_played_date::date = $1
       AND (
           config->>'Remark' NOT ILIKE '%Hold%'
+          OR config ->> 'Description' NOT ILIKE '%lc%'
+          OR config->>'Remark' NOT ILIKE '%lc%'
           OR config->>'Description' NOT ILIKE ANY (
               SELECT '%' || w.withdraw_id[1] || '%'
               FROM WithdrawReversalIDs w
