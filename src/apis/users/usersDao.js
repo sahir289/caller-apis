@@ -15,74 +15,7 @@ export const createusersDao = async (data) => {
 };
   
   
-export const getDailyAgentReportDao = async () => {
-  try {
-    const sql = `
-      SELECT
-  a.name AS agent_name,
 
-  -- New Registrations (previous day)
-  COUNT(DISTINCT CASE 
-    WHEN u.registration_date::date = CURRENT_DATE - INTERVAL '1 day'
-    THEN u.users_id END
-  ) AS new_registrations,
-
-  -- First-time depositors (previous day)
-  COUNT(DISTINCT CASE 
-    WHEN u.first_deposit_date::date = CURRENT_DATE - INTERVAL '1 day'
-    THEN u.users_id END
-  ) AS first_time_depositors,
-
-  -- First-time deposit amount
-  COALESCE(SUM(CASE 
-    WHEN u.first_deposit_date::date = CURRENT_DATE - INTERVAL '1 day'
-    THEN u.first_time_deposit_amount::float ELSE 0 END
-  ), 0)::float AS first_time_deposit_amount,
-
-  -- Repeat depositors
-  COUNT(DISTINCT CASE 
-    WHEN u.number_of_deposits > 1
-      AND u.last_deposit_date::date = CURRENT_DATE - INTERVAL '1 day'
-    THEN u.users_id END
-  ) AS repeat_depositors,
-
-  -- Total deposits count & amount
-  COUNT(CASE 
-    WHEN u.last_deposit_date::date = CURRENT_DATE - INTERVAL '1 day'
-    THEN 1 END
-  ) AS total_deposits,
-
-  COALESCE(SUM(CASE 
-    WHEN u.last_deposit_date::date = CURRENT_DATE - INTERVAL '1 day'
-    THEN u.total_deposit_amount::float ELSE 0 END
-  ), 0)::float AS deposit_amount,
-
-  -- Active clients
-  COUNT(DISTINCT CASE 
-    WHEN u.last_played_date::date = CURRENT_DATE - INTERVAL '1 day'
-    THEN u.users_id END
-  ) AS active_clients,
-
-  -- Inactive clients
-  (COUNT(DISTINCT u.users_id) -
-    COUNT(DISTINCT CASE 
-      WHEN u.last_played_date::date = CURRENT_DATE - INTERVAL '1 day'
-      THEN u.users_id END)
-  ) AS inactive_clients
-
-FROM users u
-LEFT JOIN agents a ON a.id = u.agent_id
-GROUP BY a.name
-ORDER BY a.name
-      `;
-
-    const result = await executeQuery(sql);
-    return result.rows;
-  } catch (error) {
-    console.error("Error getting daily agent report:", error);
-    throw new InternalServerError();
-  }
-};
   
 
 
@@ -100,7 +33,7 @@ export const getusersDao = async (data) => {
 
 export const getUsersByIDDao = async (user_id) => {
   try {
-    const sql = "SELECT user_id FROM users WHERE user_id = $1  LIMIT 1";
+    const sql = "SELECT id, user_id FROM users WHERE user_id = $1 LIMIT 1";
     const params = [user_id];
     const result = await executeQuery(sql, params);
     return result.rows.length > 0 ? result.rows[0] : null;

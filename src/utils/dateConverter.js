@@ -25,6 +25,22 @@ export function convertToDateOnly(dateString) {
         },
       },
 
+      // Matches: 17-09-2025 7:24:50 PM (dash format with AM/PM)
+      {
+        regex: /^(\d{1,2})-(\d{1,2})-(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s*(am|pm)/i,
+        handler: (match) => {
+          let [_, day, month, year, hour, minute, second, ampm] = match;
+          let h = parseInt(hour, 10);
+          if (ampm.toLowerCase() === "pm" && h < 12) h += 12;
+          if (ampm.toLowerCase() === "am" && h === 12) h = 0;
+          hour = h.toString();
+          return `${year}-${month.padStart(2, "0")}-${day.padStart(
+            2,
+            "0"
+          )} ${hour.padStart(2, "0")}:${minute}:${second}`;
+        },
+      },
+
       // Matches: 31/12/2023 13:31:49  (24-hour format)
       {
         regex: /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/,

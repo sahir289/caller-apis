@@ -1,18 +1,24 @@
+// Node.js built-in modules
+import fsPromises from "fs/promises";
+
+// Third-party packages
 import cron from "node-cron";
 import dotenv from "dotenv";
-import fsPromises from "fs/promises";
+
+// Internal utilities
+import { sendTelegramDocument, sendTelegramMessage } from "../../utils/telegramSender.js";
+import { generateCSV } from "../../utils/generatepdf.js";
+import { PerformanceMonitor, BatchMonitor } from "../../utils/performanceMonitor.js";
+
+// DAO imports
 import {
   getDailyAgentReportDao,
   getUnassignedUsersReportDao,
-} from "../history/historyDao.js";
-import { sendTelegramDocument } from "../../utils/telegramSender.js";
-import { sendTelegramMessage } from "../../utils/telegramSender.js";
-import { generateCSV } from "../../utils/generatepdf.js";
-import { getHourlyActiveClientsDao } from "../history/historyDao.js";
-import {
+  getHourlyActiveClientsDao,
   getHourlyHistoryAllAgentWiseUserIdsDao,
   getHourlyHistoryAllUserIdsDao,
 } from "../history/historyDao.js";
+
 dotenv.config();
 
 let isCronScheduled = false;
@@ -20,11 +26,16 @@ let isCronScheduled = false;
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function sendDocumentWithRetry(filePath, chatId, maxRetries = 5) {
+  const monitor = new PerformanceMonitor(`SendDocument: ${filePath}`, { logToConsole: false });
+  monitor.start();
+  
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
+      monitor.checkpoint(`attempt_${attempt}`);
       const success = await sendTelegramDocument(filePath, chatId);
       if (success) {
-        console.log(`Successfully sent document: ${filePath}`);
+        const result = monitor.end();
+        console.log(`Successfully sent document: ${filePath} (${result.duration}ms)`);
         return true;
       }
       console.warn(
@@ -34,16 +45,20 @@ async function sendDocumentWithRetry(filePath, chatId, maxRetries = 5) {
       await delay(retryAfter * 1000);
       if (attempt === maxRetries) {
         console.error(`Max retries reached for document: ${filePath}`);
+        monitor.end();
         return false;
       }
     } catch (error) {
       console.error(`Error sending document ${filePath}: ${error.message}`);
+      monitor.end();
       return false;
     }
   }
 }
 
 async function generateAndSendUnassignedReport(date) {
+  const monitor = new PerformanceMonitor('Generate Unassigned Report', { trackMemory: true });
+  monitor.start();
     const reports = await getUnassignedUsersReportDao();
   console.log(`Processing ${reports.length} unassigned users`);
   if (!reports.length) {

@@ -20,6 +20,9 @@ dist/
 .env.test.local
 .env.production.local
 
+# Uploads folder (temporary files)
+uploads/
+
 # Debugger history
 .vscode/
 

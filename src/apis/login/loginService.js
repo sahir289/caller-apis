@@ -1,6 +1,6 @@
-import { createHash,verifyHash } from "../../utils/bcryptPassword.js";
+import { createHash, verifyHash } from "../../utils/bcryptPassword.js";
 import jwt from "jsonwebtoken";
-import { BadRequestError,NotFoundError } from "../../utils/errorHandler.js";
+import { BadRequestError, NotFoundError } from "../../utils/errorHandler.js";
 
 import {
   createLoginUserDao,
@@ -9,9 +9,9 @@ import {
 } from "./loginDao.js";
 
 export const createLoginUsersService = async (payload) => {
-    try {
+  try {
     const hashPassword = await createHash(payload.password);
-    payload.password = hashPassword
+    payload.password = hashPassword;
     const createdRecord = await createLoginUserDao(payload);
     return createdRecord;
   } catch (error) {
@@ -19,7 +19,6 @@ export const createLoginUsersService = async (payload) => {
     throw error;
   }
 };
-
 
 export const getLoginUserService = async (payload) => {
   try {
@@ -31,18 +30,16 @@ export const getLoginUserService = async (payload) => {
   }
 };
 
-
-
 export const loginService = async (payload) => {
   try {
     const user = await getLoginByUserName({ user_name: payload?.user_name });
     if (!user) {
-       throw new NotFoundError("Invalid credentials");
+      throw new NotFoundError("Invalid credentials");
     }
     // Verify password
     const isValidPassword = await verifyHash(payload.password, user.password);
     if (!isValidPassword) {
-      throw new BadRequestError("Invalid Password")
+      throw new BadRequestError("Invalid Password");
     }
     const tokenPayload = {
       user_name: user.user_name,
@@ -53,7 +50,15 @@ export const loginService = async (payload) => {
       expiresIn: process.env.JWT_EXPIRES_IN,
     });
 
-    return accessToken;
+    // Return both user and token
+    return {
+      user: {
+        id: user.id,
+        user_name: user.user_name,
+        // add other user fields if needed
+      },
+      token: accessToken,
+    };
   } catch (error) {
     console.error("Error in login service", error);
     throw error;

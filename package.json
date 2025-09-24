@@ -11,6 +11,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "axios": "^1.11.0",
     "bcrypt": "^6.0.0",
     "body-parser": "^2.2.0",
@@ -26,6 +27,7 @@
     "pdfkit": "^0.17.1",
     "pdfkit-table": "^0.1.99",
     "pg": "^8.16.3",
+    "uuid": "^13.0.0",
     "v4": "^0.0.1",
     "xlsx": "^0.18.5"
   },

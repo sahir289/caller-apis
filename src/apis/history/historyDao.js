@@ -1,7 +1,11 @@
-import { buildInsertQuery } from "../../utils/db.js";
-import { executeQuery } from "../../utils/db.js";
-import { buildSelectQuery } from "../../utils/db.js";
+// Database utilities
+import { buildInsertQuery, executeQuery, buildSelectQuery } from "../../utils/db.js";
 import { InternalServerError } from "../../utils/errorHandler.js";
+
+// Constants for query optimization
+const BATCH_SIZE = 500; // For bulk operations
+const MAX_DAYS_LOOKBACK = 7;
+
 export const createhistoryDao = async (data) => {
     try {
       const [sql, params] = buildInsertQuery("history", data);
@@ -14,69 +18,7 @@ export const createhistoryDao = async (data) => {
   }
 };
 
-  export const getwithdrawReversalAmount = async (
-    date
-  ) => {
-    try {
-      const sql = `
-     SELECT
-    COALESCE(SUM(h.total_deposit_amount::NUMERIC), 0) AS total_deposit_amount,
-    Count(DISTINCT h.user_id) AS user_ids
-FROM history h
-WHERE h.last_played_date::date = $1
-  AND h.is_obsolete = false
-  AND config->>'Description' ILIKE '%Withdraw Reversal%'
-  AND h.user_id IS NOT NULL;
-  `;
-      const params = [date || null]; 
-      const result = await executeQuery(sql, params);
-      return result.rows[0]
-    } catch (error) {
-      console.error("Error fetching history IDs by date:", error);
-      throw new InternalServerError();
-    }
-  };
-export const getHistoryExcludedIDsByDateDao = async (
-  date
-) => {
-  try {
-    const sql = `
-    WITH WithdrawReversalIDs AS (
-    SELECT REGEXP_MATCH(config->>'Description', 'Withdraw Reversal : ([A-Z0-9]+)') AS withdraw_id
-    FROM public.history
-    WHERE last_played_date::date = $1
-      AND config->>'Description' ILIKE '%Withdraw Reversal%'
-)
-SELECT array_agg(h.id) AS all_ids
-FROM history h
-WHERE h.last_played_date::date = $1
-  AND h.is_obsolete = false
-  AND (
-    h.config->>'Description' ILIKE '%lc%'
-    OR h.config->>'Remark' ILIKE '%lc%'
-    OR h.config->>'Remark' ILIKE '%Hold%'
-    OR config->>'Remark' ILIKE '%Bonus%'
-    OR h.config->>'Description' ILIKE ANY (
-          SELECT '%' || w.withdraw_id[1] || '%'
-          FROM WithdrawReversalIDs w
-          WHERE w.withdraw_id IS NOT NULL
-      )
-  )
-  AND h.user_id IS NOT NULL;
-`;
-    const params = [date || null]; 
-    const result = await executeQuery(sql, params);
 
-    if (result.rows.length > 0 && result.rows[0].all_ids) {
-      return result.rows[0].all_ids; // Returns array of IDs
-    }
-
-    return null; // No IDs found
-  } catch (error) {
-    console.error("Error fetching history IDs by date:", error);
-    throw new InternalServerError();
-  }
-};
 export const gethistoryByLastPlayedDateDao = async (data) => {
   try {
     const [sql, params] = buildSelectQuery("history", data);
@@ -89,29 +31,32 @@ export const gethistoryByLastPlayedDateDao = async (data) => {
 };
 export const getDailyAgentReportDao = async () => {
   try {
+    // Optimized query with better indexing strategy
     const sql = `
+      WITH RecentActivity AS (
+        SELECT DISTINCT u.user_id as user_string_id, u.agent_id
+        FROM history h
+        INNER JOIN users u ON u.id = h.user_id
+        WHERE h.played_at::date >= CURRENT_DATE - INTERVAL '7 days'
+          AND h.is_obsolete = false
+          AND h.user_id IS NOT NULL
+      )
       SELECT
         a.name AS agent_name,
-        COALESCE(ARRAY_AGG(DISTINCT CASE 
-          WHEN h.user_id IS NOT NULL THEN u.user_id 
-          END), '{}') AS active_client_ids,
-        COALESCE(ARRAY_AGG(DISTINCT CASE 
-          WHEN h.user_id IS NULL THEN u.user_id 
-          END), '{}') AS inactive_client_ids,
-        COUNT(DISTINCT CASE 
-          WHEN h.user_id IS NOT NULL THEN u.user_id 
-          END) AS active_clients_count,
-        COUNT(DISTINCT CASE 
-          WHEN h.user_id IS NULL THEN u.user_id 
-          END) AS inactive_clients_count
+        COALESCE(
+          ARRAY_AGG(DISTINCT ra.user_string_id) FILTER (WHERE ra.user_string_id IS NOT NULL), 
+          '{}'
+        ) AS active_client_ids,
+        COALESCE(
+          ARRAY_AGG(DISTINCT u.user_id) FILTER (WHERE ra.user_string_id IS NULL AND u.user_id IS NOT NULL), 
+          '{}'
+        ) AS inactive_client_ids,
+        COUNT(DISTINCT ra.user_string_id) AS active_clients_count,
+        COUNT(DISTINCT CASE WHEN ra.user_string_id IS NULL THEN u.user_id END) AS inactive_clients_count
       FROM agents a
       LEFT JOIN users u ON u.agent_id = a.id
-      LEFT JOIN (
-        SELECT DISTINCT user_id
-        FROM history
-        WHERE last_played_date::date >= CURRENT_DATE - INTERVAL '7 days'
-      ) h ON h.user_id = u.user_id
-      GROUP BY a.name
+      LEFT JOIN RecentActivity ra ON ra.user_string_id = u.user_id
+      GROUP BY a.id, a.name
       ORDER BY a.name;
     `;
 
@@ -128,40 +73,46 @@ export const getHourlyHistoryAllAgentWiseUserIdsDao = async () => {
       timeZone: "Asia/Kolkata",
     });
     const indianDate = new Date(date).toISOString().split("T")[0];
-    const excludedIds = await getHistoryExcludedIDsByDateDao(indianDate);
+    
+    // Optimized query with better performance
     const sql = `
-      WITH DeduplicatedHistory AS (
-        SELECT DISTINCT ON (h.user_id, h.last_played_date, h.total_deposit_amount, h.total_withdrawal_amount)
+      WITH DailyHistory AS (
+        SELECT 
             h.user_id,
-            h.last_played_date,
-            h.total_deposit_amount,
-            h.total_withdrawal_amount
+            u.user_id as user_string_id,
+            u.agent_id,
+            SUM(CASE WHEN h.type IN ('PAYIN', 'DEPOSIT') AND h.status IN ('SUCCESS', 'APPROVED') THEN h.amount ELSE 0 END) as deposit_amount,
+            SUM(CASE WHEN h.type IN ('PAYOUT', 'WITHDRAWAL') AND h.status IN ('SUCCESS', 'APPROVED') THEN h.amount ELSE 0 END) as withdrawal_amount
         FROM history h
-        WHERE h.last_played_date::date = $1
+        INNER JOIN users u ON u.id = h.user_id
+        WHERE h.played_at::date = $1
           AND h.is_obsolete = false
-          AND h.id NOT IN (SELECT UNNEST($2::UUID[])) 
-        ORDER BY
-            h.user_id,
-            h.last_played_date,
-            h.total_deposit_amount,
-            h.total_withdrawal_amount,
-            h.created_at DESC
+          AND h.user_id IS NOT NULL
+          AND NOT (
+            h.config->>'Description' ILIKE '%lc%' 
+            OR h.config->>'Remark' ILIKE '%lc%'
+            OR h.config->>'Remark' ILIKE '%Hold%'
+            OR h.config->>'Remark' ILIKE '%Bonus%'
+            OR h.config->>'Description' ILIKE '%Withdraw Reversal%'
+          )
+        GROUP BY h.user_id, u.user_id, u.agent_id
       )
       SELECT
-          TRIM(a.name) AS agent_name,
-          COUNT(DISTINCT u.user_id) FILTER (WHERE dh.user_id IS NOT NULL) AS active_clients_count,
-          COALESCE(SUM(dh.total_deposit_amount::NUMERIC), 0) AS total_deposit_amount,
-          COALESCE(SUM(dh.total_withdrawal_amount::NUMERIC), 0) AS total_withdrawal_amount
+          COALESCE(TRIM(a.name), 'Unassigned') AS agent_name,
+          COUNT(DISTINCT dh.user_string_id) AS active_clients_count,
+          COALESCE(SUM(dh.deposit_amount), 0) AS total_deposit_amount,
+          COALESCE(SUM(dh.withdrawal_amount), 0) AS total_withdrawal_amount
       FROM agents a
-      LEFT JOIN users u ON u.agent_id = a.id
-      LEFT JOIN DeduplicatedHistory dh ON dh.user_id = u.user_id
-      GROUP BY TRIM(a.name)
-      ORDER BY TRIM(a.name)
+      RIGHT JOIN DailyHistory dh ON dh.agent_id = a.id
+      GROUP BY a.id, a.name
+      HAVING COUNT(DISTINCT dh.user_string_id) > 0
+      ORDER BY COALESCE(TRIM(a.name), 'Unassigned');
     `;
-    const result = await executeQuery(sql, [indianDate, excludedIds || []]);
+    
+    const result = await executeQuery(sql, [indianDate]);
     return result.rows;
   } catch (error) {
-    console.error("Error getting daily agent report:", error);
+    console.error("Error getting hourly agent-wise report:", error);
     throw new InternalServerError();
   }
 };
@@ -172,34 +123,43 @@ export const getHourlyHistoryAllUserIdsDao = async () => {
       timeZone: "Asia/Kolkata",
     });
     const indianDate = new Date(date).toISOString().split("T")[0];
-    const excludedIds = await getHistoryExcludedIDsByDateDao(indianDate); // Fetch excluded IDs
+    
     const sql = `
-      WITH DeduplicatedHistory AS (
-        SELECT DISTINCT ON (h.user_id, h.last_played_date, h.total_deposit_amount, h.total_withdrawal_amount)
-            h.user_id,
-            h.last_played_date,
-            h.total_deposit_amount,
-            h.total_withdrawal_amount
+      WITH DailyHistory AS (
+        SELECT 
+            u.user_id as user_string_id,
+            CASE WHEN h.type IN ('PAYIN', 'DEPOSIT') THEN h.amount ELSE 0 END as deposit_amount,
+            CASE WHEN h.type IN ('PAYOUT', 'WITHDRAWAL') THEN h.amount ELSE 0 END as withdrawal_amount
         FROM history h
-        WHERE h.last_played_date::date = $1
+        JOIN users u ON u.id = h.user_id
+        WHERE h.played_at::date = $1
           AND h.is_obsolete = false
-          AND h.id NOT IN (SELECT UNNEST($2::UUID[])) 
-        ORDER BY
-            h.user_id,
-            h.last_played_date,
-            h.total_deposit_amount,
-            h.total_withdrawal_amount,
-            h.created_at DESC
+          AND h.status IN ('SUCCESS', 'APPROVED')
+          AND NOT (h.config->>'Description' ILIKE '%lc%' 
+                  OR h.config->>'Remark' ILIKE '%lc%'
+                  OR h.config->>'Remark' ILIKE '%Hold%'
+                  OR h.config->>'Remark' ILIKE '%Bonus%'
+                  OR h.config->>'Description' ILIKE '%Withdraw Reversal%')
+      ),
+      ReversalHistory AS (
+        SELECT 
+            COALESCE(SUM(h.amount), 0) AS total_reversal_amount
+        FROM history h
+        WHERE h.played_at::date = $1
+          AND h.is_obsolete = false
+          AND h.config->>'Description' ILIKE '%Withdraw Reversal%'
       )
       SELECT
-          COALESCE(SUM(dh.total_deposit_amount::NUMERIC), 0) AS total_deposit_amount,
-          COALESCE(SUM(dh.total_withdrawal_amount::NUMERIC), 0) AS total_withdrawal_amount,
-          ARRAY_AGG(DISTINCT dh.user_id) AS user_ids
-      FROM DeduplicatedHistory dh
-      WHERE dh.user_id IS NOT NULL;
+          COALESCE(SUM(dh.deposit_amount), 0) AS total_deposit_amount,
+          COALESCE(SUM(dh.withdrawal_amount), 0) AS total_withdrawal_amount,
+          (SELECT total_reversal_amount FROM ReversalHistory) AS total_reversal_amount,
+          COUNT(DISTINCT dh.user_string_id) AS user_count
+      FROM DailyHistory dh
     `;
-    const result = await executeQuery(sql, [indianDate, excludedIds || []]); 
+    
+    const result = await executeQuery(sql, [indianDate]);
     const row = result.rows[0];
+    
     const nowIST = new Date().toLocaleString("en-US", {
       timeZone: "Asia/Kolkata",
     });
@@ -212,18 +172,18 @@ export const getHourlyHistoryAllUserIdsDao = async () => {
     const day = dateObj.getDate().toString().padStart(2, "0");
     const month = (dateObj.getMonth() + 1).toString().padStart(2, "0");
     const year = dateObj.getFullYear();
-    const WithDrawReversal =await getwithdrawReversalAmount(indianDate);
+    
     const formattedTime = `${hours}:${minutes} ${ampm} ${day}-${month}-${year}`;
-    const data = {
+    
+    return {
       time: formattedTime,
-      total_deposit_amount: row.total_deposit_amount,
-      total_withdrawal_amount: row.total_withdrawal_amount,
-      total_reversal_amount: WithDrawReversal.total_deposit_amount,
-      user_count: row.user_ids?.length   || 0,
+      total_deposit_amount: row.total_deposit_amount || 0,
+      total_withdrawal_amount: row.total_withdrawal_amount || 0,
+      total_reversal_amount: row.total_reversal_amount || 0,
+      user_count: row.user_count || 0,
     };
-    return data;
   } catch (error) {
-    console.error("Error getting daily history user IDs:", error);
+    console.error("Error getting hourly summary:", error);
     throw new InternalServerError();
   }
 };
@@ -234,24 +194,26 @@ export const getHourlyActiveClientsDao = async () => {
       timeZone: "Asia/Kolkata",
     });
     const reportDate = new Date(date).toISOString().split("T")[0];
+    
     const sql = `
+      WITH ActiveClients AS (
+        SELECT DISTINCT u.user_id as user_string_id, u.agent_id
+        FROM history h
+        JOIN users u ON u.id = h.user_id
+        WHERE h.played_at::date = $1
+          AND h.is_obsolete = false
+      )
       SELECT
         COALESCE(TRIM(a.name), 'Unassigned') AS agent_name,
+        ARRAY_AGG(DISTINCT ac.user_string_id) FILTER (WHERE ac.user_string_id IS NOT NULL) AS active_client_ids,
+        COUNT(DISTINCT ac.user_string_id) AS active_clients_count,
         ARRAY_AGG(DISTINCT u.user_id) FILTER (
-          WHERE h.last_played_date::date = $1
-        ) AS active_client_ids,
-        COUNT(DISTINCT u.user_id) FILTER (
-          WHERE h.last_played_date::date = $1
-        ) AS active_clients_count,
-        ARRAY_AGG(DISTINCT u.user_id) FILTER (
-          WHERE h.last_played_date IS NULL OR h.last_played_date::date <> $1
+          WHERE ac.user_string_id IS NULL AND u.user_id IS NOT NULL
         ) AS inactive_client_ids,
-        COUNT(DISTINCT u.user_id) FILTER (
-          WHERE h.last_played_date IS NULL OR h.last_played_date::date <> $1
-        ) AS inactive_clients_count
+        COUNT(DISTINCT u.user_id) FILTER (WHERE ac.user_string_id IS NULL) AS inactive_clients_count
       FROM users u
       LEFT JOIN agents a ON u.agent_id = a.id
-      LEFT JOIN history h ON h.user_id = u.user_id
+      LEFT JOIN ActiveClients ac ON ac.user_string_id = u.user_id
       GROUP BY TRIM(a.name)
       ORDER BY TRIM(a.name);
     `;
@@ -278,26 +240,29 @@ export const getHourlyActiveClientsDao = async () => {
 export const getUnassignedUsersReportDao = async () => {
   try {
     const sql = `
+      WITH RecentActivity AS (
+        SELECT DISTINCT u.user_id as user_string_id
+        FROM history h
+        JOIN users u ON u.id = h.user_id
+        WHERE h.played_at::date >= CURRENT_DATE - INTERVAL '7 days'
+          AND h.is_obsolete = false
+      )
       SELECT
         'Unassigned' AS agent_name,
         COALESCE(ARRAY_AGG(DISTINCT CASE 
-          WHEN h.user_id IS NOT NULL THEN u.user_id 
+          WHEN ra.user_string_id IS NOT NULL THEN ra.user_string_id 
           END), '{}') AS active_client_ids,
         COALESCE(ARRAY_AGG(DISTINCT CASE 
-          WHEN h.user_id IS NULL THEN u.user_id 
+          WHEN ra.user_string_id IS NULL THEN u.user_id 
           END), '{}') AS inactive_client_ids,
         COUNT(DISTINCT CASE 
-          WHEN h.user_id IS NOT NULL THEN u.user_id 
+          WHEN ra.user_string_id IS NOT NULL THEN ra.user_string_id 
           END) AS active_clients_count,
         COUNT(DISTINCT CASE 
-          WHEN h.user_id IS NULL THEN u.user_id 
+          WHEN ra.user_string_id IS NULL THEN u.user_id 
           END) AS inactive_clients_count
       FROM users u
-      LEFT JOIN (
-        SELECT DISTINCT user_id
-        FROM history
-        WHERE last_played_date::date >= CURRENT_DATE - INTERVAL '7 days'
-      ) h ON h.user_id = u.user_id
+      LEFT JOIN RecentActivity ra ON ra.user_string_id = u.user_id
       WHERE u.agent_id IS NULL
       GROUP BY agent_name
       ORDER BY agent_name;
@@ -319,6 +284,66 @@ export const gethistoryDao = async (data) => {
     return result.rows;
   } catch (error) {
     console.error("Error creating history:", error);
+    throw new InternalServerError();
+  }
+};
+
+export const bulkCreateHistoryDao = async (records) => {
+  try {
+    if (!records || records.length === 0) {
+      return [];
+    }
+
+    // Process in batches for better performance
+    const results = [];
+    for (let i = 0; i < records.length; i += BATCH_SIZE) {
+      const batch = records.slice(i, i + BATCH_SIZE);
+      const batchResults = await processBatch(batch);
+      results.push(...batchResults);
+    }
+
+    return results;
+  } catch (error) {
+    console.error("Error bulk creating history records:", error);
+    throw new InternalServerError();
+  }
+};
+
+// Helper function for batch processing
+const processBatch = async (batch) => {
+  const keys = Object.keys(batch[0]);
+  const columns = keys.join(", ");
+  
+  // Create placeholders for each record
+  const valuePlaceholders = batch.map((_, recordIndex) => {
+    const recordPlaceholders = keys.map((_, keyIndex) => 
+      `$${recordIndex * keys.length + keyIndex + 1}`
+    ).join(", ");
+    return `(${recordPlaceholders})`;
+  }).join(", ");
+
+  // Flatten all values
+  const allValues = batch.flatMap(record => keys.map(key => record[key]));
+
+  const sql = `INSERT INTO history (${columns}) VALUES ${valuePlaceholders} RETURNING id`;
+  const result = await executeQuery(sql, allValues);
+  
+  return result.rows;
+};
+
+export const checkDuplicateHistoryDao = async (originalId, type) => {
+  try {
+    const sql = `
+      SELECT id FROM history 
+      WHERE config->>'original_id' = $1 
+      AND type = $2 
+      AND is_obsolete = false
+      LIMIT 1
+    `;
+    const result = await executeQuery(sql, [originalId, type]);
+    return result.rows[0] || null;
+  } catch (error) {
+    console.error("Error checking duplicate history:", error);
     throw new InternalServerError();
   }
 };

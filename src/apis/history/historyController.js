@@ -1,151 +1,126 @@
+// Node.js built-in modules
 import path from "path";
 import fs from "fs";
+
+// Third-party packages
 import XLSX from "xlsx";
-import { createhistoryService } from "./historyService.js";
-import { convertToDateOnly } from "../../utils/dateConverter.js";
-import { sendSuccess } from "../../utils/responseHandler.js"; 
-import {BadRequestError} from "../../utils/errorHandler.js";
+import multer from 'multer';
 
-function getValidUserId(rawString, company_name) {
-  let requiredBlockedUser = null;
-  if (company_name === "Anna247") requiredBlockedUser = "admin";
-  else if (company_name === "Anna777") requiredBlockedUser = "aganna777";
-  const parts = rawString
-    .split(/→|←|<-|->|\/|\\/) 
-    .map((p) => p.trim())
-    .filter(Boolean);
-  if (
-    requiredBlockedUser &&
-    !parts.some((p) => p.toLowerCase() === requiredBlockedUser.toLowerCase())
-  ) {
-    throw new BadRequestError("Not a valid panel file"); 
+// Internal utilities
+import { sendSuccess, sendError, RESPONSE_MESSAGES, STATUS_CODES } from "../../utils/responseHandler.js"; 
+import { BadRequestError } from "../../utils/errorHandler.js";
+
+// Service imports
+import { createhistoryService, createCSVImportService } from "./historyService.js";
+import { parseExcelFile, parseCSVFile } from "./csvImportService.js";// Constants
+const SUPPORTED_FILE_TYPES = ['.csv', '.xlsx', '.xls'];
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+
+// Configure multer for CSV file uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, './uploads/'),
+  filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`)
+});
+
+export const uploadCSV = multer({
+  storage: storage,
+  fileFilter: (req, file, cb) => {
+    const fileExt = path.extname(file.originalname).toLowerCase();
+    if (SUPPORTED_FILE_TYPES.includes(fileExt)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only CSV and Excel files are allowed'), false);
+    }
+  },
+  limits: { fileSize: MAX_FILE_SIZE }
+}).single('csvFile');
+
+// Helper function to safely delete file
+const safeDeleteFile = (filePath) => {
+  try {
+    if (filePath && fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch (error) {
+    console.warn('Failed to cleanup file:', error.message);
   }
-  return (
-    parts.find(
-      (p) => p.toLowerCase() !== (requiredBlockedUser?.toLowerCase() || "")
-    ) || null
-  );
-}
+};
 
-
-export const createhistory = async (req, res) => {
+export const createhistory = async (req, res, next) => {
+  let filePath;
+  
   try {
     const { company_name } = req.body;
+    
     if (!req.file) {
       throw new BadRequestError("No file uploaded");
     }
-    const filePath = req.file.path;
-    let fileName = req.file.originalname;
-    let {id} = req.user;
-    const ext = path.extname(req.file.originalname).toLowerCase();
-    if (![".xlsx", ".xls", ".csv"].includes(ext)) {
-      fs.unlinkSync(filePath);
-      throw new BadRequestError("Unsupported file format");
+    
+    if (!company_name) {
+      throw new BadRequestError("Company name is required");
     }
-    const workbook = XLSX.readFile(filePath);
-    const sheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[sheetName];
-    const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: null });
-    fs.unlinkSync(filePath);
-
-    const newhistory = jsonData
-      .map((transaction) => {
-        let userId, date;
-        const desc = String(transaction?.Description || "");
-        const remark = String(transaction?.Remark || "");
-
-        if (transaction["Date & Time"]) {
-          const fromToStr = String(transaction["From → To"] || "");
-          if (!fromToStr || fromToStr.trim() === "") return null;
-          const fromToUser = getValidUserId(fromToStr, company_name);
-          if (!fromToUser) return null;
-
-          userId = fromToUser;
-          date = transaction["Date & Time"];
-          // DEBIT/CREDIT LOGIC ONLY
-          const debit = parseFloat(transaction.Debit) || 0;
-          const credit = parseFloat(transaction.Credit) || 0;
-
-          return {
-            user_id: userId,
-            company_name: company_name || null,
-            registration_date: null,
-            first_deposit_date: debit > 0 ? convertToDateOnly(date) : null,
-            first_time_deposit_amount: debit > 0 ? debit : 0,
-            number_of_deposits: debit > 0 ? 1 : 0,
-            total_deposit_amount: debit > 0 ? debit : 0,
-            total_winning_amount: credit > 0 ? credit : 0,
-            total_withdrawal_amount: credit > 0 ? credit : 0,
-            last_deposit_date: debit > 0 ? convertToDateOnly(date) : null,
-            last_played_date: convertToDateOnly(date),
-            user_status: null,
-            available_points: 0,
-            is_obsolete: false,
-            config: Object.fromEntries(
-              Object.entries(transaction).filter(
-                ([key]) =>
-                  ![
-                    "From → To",
-                    "Fromto",
-                    "Date & Time",
-                    "Date",
-                    "Credit",
-                    "Debit",
-                  ].includes(key)
-              )
-            ),
-          };
-        } else if (transaction.Date) {
-          const fromToStr = String(transaction.Fromto || "");
-          if (!fromToStr || fromToStr.trim() === "") return null;
-          const fromToUser = getValidUserId(fromToStr, company_name);
-          if (!fromToUser) return null;
-
-          userId = fromToUser;
-          date = transaction.Date;
-          // DEBIT/CREDIT LOGIC ONLY
-          const debit = Math.abs(parseFloat(transaction.Debit)) || 0;
-          const credit = parseFloat(transaction.Credit) || 0;
-
-          return {
-            user_id: userId,
-            company_name: company_name || null,
-            registration_date: null,
-            first_deposit_date: debit > 0 ? convertToDateOnly(date) : null,
-            first_time_deposit_amount: debit > 0 ? debit : 0,
-            number_of_deposits: debit > 0 ? 1 : 0,
-            total_deposit_amount: debit > 0 ? debit : 0,
-            total_winning_amount: credit > 0 ? credit : 0,
-            total_withdrawal_amount: credit > 0 ? credit : 0,
-            last_deposit_date: debit > 0 ? convertToDateOnly(date) : null,
-            last_played_date: convertToDateOnly(date),
-            user_status: null,
-            available_points: 0,
-            is_obsolete: false,
-            config: Object.fromEntries(
-              Object.entries(transaction).filter(
-                ([key]) =>
-                  ![
-                    "From → To",
-                    "Fromto",
-                    "Date & Time",
-                    "Date",
-                    "Credit",
-                    "Debit",
-                  ].includes(key)
-              )
-            ),
-          };
-        } else {
-          return null;
-        }
-      })
-      .filter((user) => user !== null);
-    const creatuser = await createhistoryService(newhistory,{id,fileName});
-    console.log(`${company_name} History created successfully`);
-    return sendSuccess(res, "history created successfully",creatuser);
+    
+    filePath = req.file.path;
+    const fileName = req.file.originalname;
+    const { id } = req.user;
+    const ext = path.extname(fileName).toLowerCase();
+    
+    if (!SUPPORTED_FILE_TYPES.includes(ext)) {
+      throw new BadRequestError(`Unsupported file format. Supported formats: ${SUPPORTED_FILE_TYPES.join(", ")}`);
+    }
+    
+    // Get company by name to get company ID
+    const { getCompanyDao } = await import("../companies/companiesDao.js");
+    let company = await getCompanyDao({ name: company_name });
+    if (!company) {
+      const { createCompanyDao } = await import("../companies/companiesDao.js");
+      company = await createCompanyDao({ name: company_name });
+    }
+    
+    // Use the same logic as importCSVController
+    const result = await createCSVImportService(filePath, company.id, ext);
+    
+    return sendSuccess(res, "History created successfully", {
+      ...result,
+      processedRecords: result.totalProcessed
+    });
+    
   } catch (error) {
     console.error("Error in createhistory:", error);
-    throw error;
+    return next(error);
+  } finally {
+    if (filePath) {
+      safeDeleteFile(filePath);
+    }
+  }
+};
+
+export const importCSVController = async (req, res, next) => {
+  let filePath;
+  
+  try {
+    if (!req.file) {
+      throw new BadRequestError("No CSV/Excel file uploaded");
+    }
+
+    const { companyId } = req.body;
+    if (!companyId) {
+      throw new BadRequestError("Company ID is required for import");
+    }
+    
+    filePath = req.file.path;
+    const fileName = req.file.originalname;
+    const ext = path.extname(fileName).toLowerCase();
+    
+    const result = await createCSVImportService(filePath, companyId, ext);
+    
+    return sendSuccess(res, "Import completed successfully", result);
+  } catch (error) {
+    console.error("Import failed:", error);
+    return next(error);
+  } finally {
+    if (filePath) {
+      safeDeleteFile(filePath);
+    }
   }
 };
